@@ -1,7 +1,7 @@
 [package]
 name = "json5format"
 version = "0.1.0"
-authors = ["Rich Kadel <richkadel@google.com>", "Benjamin Brittain<bwb@google.com>"]
+authors = ["Rich Kadel <richkadel@google.com>"]
 edition = "2018"
 license = "BSD License 2.0"
 description = "Customizable JSON5 document formatter that preserves comments"
