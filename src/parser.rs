@@ -1,6 +1,6 @@
-// Copyright 2020 The Fuchsia Authors. All rights reserved.
-// Use of this source code is governed by a BSD-style license that can be
-// found in the LICENSE file.
+// Copyright (c) 2020 Google LLC All rights reserved.
+// Use of this source code is governed by a BSD-style
+// license that can be found in the LICENSE file.
 
 #![deny(missing_docs)]
 use {
@@ -701,12 +701,10 @@ mod tests {
     use {super::*, crate::test_error, proptest::prelude::*};
 
     lazy_static! {
-        // With `ProptestConfig::failure_persistence` on by default, fuchsia package-based tests
-        // generate the following warnings:
+        // With `ProptestConfig::failure_persistence` on by default, tests may generate the
+        // following warnings:
         //
-        //     proptest: Failed to find absolute path of source file
-        //         '"../../src/sys/cmc/json5format/src/lib.rs"'. Ensure the test is being run from
-        //         somewhere within the crate directory hierarchy.
+        //     proptest: Failed to find absolute path of source file...
         //     proptest: FileFailurePersistence::SourceParallel set, but no source file known
         //
         // To suppress these warnings, the following ProptestConfig overrides this behavior:

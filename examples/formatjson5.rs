@@ -1,6 +1,6 @@
-// Copyright 2020 The Fuchsia Authors. All rights reserved.
-// Use of this source code is governed by a BSD-style license that can be
-// found in the LICENSE file.
+// Copyright (c) 2020 Google LLC All rights reserved.
+// Use of this source code is governed by a BSD-style
+// license that can be found in the LICENSE file.
 
 //! A command line interface (CLI) tool to format [JSON5](https://json5.org) ("JSON for
 //! Humans") documents to a consistent style, preserving comments.
