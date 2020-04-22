@@ -19,12 +19,7 @@ struct FormatTest<'a> {
 
 impl<'a> Default for FormatTest<'a> {
     fn default() -> Self {
-        FormatTest {
-            options: None,
-            input: "",
-            error: None,
-            expected: "",
-        }
+        FormatTest { options: None, input: "", error: None, expected: "" }
     }
 }
 
@@ -351,10 +346,7 @@ fn test_breaks_between_line_comments() {
 #[test]
 fn test_format_sort_and_align_block_comment() {
     test_format(FormatTest {
-        options: Some(FormatOptions {
-            sort_array_items: true,
-            ..Default::default()
-        }),
+        options: Some(FormatOptions { sort_array_items: true, ..Default::default() }),
         input: r##"{
     "program": {
         "binary": "bin/session_manager"
@@ -873,9 +865,7 @@ See [fuchsia.dev](https://fuchsia.dev).
 
 #[test]
 fn test_options() {
-    let options = FormatOptions {
-        ..Default::default()
-    };
+    let options = FormatOptions { ..Default::default() };
     assert_eq!(options.indent_by, 4);
     assert_eq!(options.trailing_commas, true);
     assert_eq!(options.collapse_containers_of_one, false);
@@ -1205,10 +1195,7 @@ fn test_format_options() {
 #[test]
 fn test_no_trailing_commas() {
     test_format(FormatTest {
-        options: Some(FormatOptions {
-            trailing_commas: false,
-            ..Default::default()
-        }),
+        options: Some(FormatOptions { trailing_commas: false, ..Default::default() }),
         input: r##"{
     offer: [
         {
@@ -1308,10 +1295,7 @@ fn test_no_trailing_commas() {
 #[test]
 fn test_collapse_containers_of_one() {
     test_format(FormatTest {
-        options: Some(FormatOptions {
-            collapse_containers_of_one: true,
-            ..Default::default()
-        }),
+        options: Some(FormatOptions { collapse_containers_of_one: true, ..Default::default() }),
         input: r##"{
     offer: [
         {

@@ -341,17 +341,7 @@ mod tests {
 
         let some_filename = "some_file.json5";
         let args = Opt::from_iter(
-            vec![
-                "formatjson5",
-                "-r",
-                "-n",
-                "-o",
-                "-s",
-                "-i",
-                "2",
-                some_filename,
-            ]
-            .iter(),
+            vec!["formatjson5", "-r", "-n", "-o", "-s", "-i", "2", some_filename].iter(),
         );
         assert_eq!(args.files.len(), 1);
         assert_eq!(args.replace, true);
@@ -360,11 +350,7 @@ mod tests {
         assert_eq!(args.sort_arrays, true);
         assert_eq!(args.indent, 2);
 
-        let filename = args.files[0]
-            .clone()
-            .into_os_string()
-            .to_string_lossy()
-            .to_string();
+        let filename = args.files[0].clone().into_os_string().to_string_lossy().to_string();
         assert_eq!(filename, some_filename);
     }
 }

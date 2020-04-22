@@ -33,11 +33,7 @@ impl ParsedDocument {
         let mut parser = Parser::new(buffer, &filename);
         let content = parser.parse(&buffer)?;
 
-        Ok(Self {
-            owned_buffer: None,
-            filename,
-            content,
-        })
+        Ok(Self { owned_buffer: None, filename, content })
     }
 
     /// Parses the JSON5 document represented by `buffer`, and returns a parsed representation of
@@ -54,11 +50,7 @@ impl ParsedDocument {
         let mut parser = Parser::new(&buffer, &filename);
         let content = parser.parse(&buffer)?;
 
-        Ok(Self {
-            owned_buffer: Some(buffer),
-            filename,
-            content,
-        })
+        Ok(Self { owned_buffer: Some(buffer), filename, content })
     }
 
     /// Returns the filename, if provided when the object was created.
@@ -219,11 +211,7 @@ pub(crate) struct Primitive {
 
 impl Primitive {
     pub fn new(value_string: String, comments: Vec<Comment>) -> Value {
-        Value::Primitive(Primitive {
-            comments,
-            end_of_line_comment: None,
-            value_string,
-        })
+        Value::Primitive(Primitive { comments, end_of_line_comment: None, value_string })
     }
 }
 
@@ -350,9 +338,8 @@ impl Array {
                         // If two values are case-insensitively equal, compare them again with
                         // case-sensitivity to ensure consistent re-ordering.
                         if ordering == Ordering::Equal {
-                            ordering = left_primitive
-                                .value_string
-                                .cmp(&right_primitive.value_string);
+                            ordering =
+                                left_primitive.value_string.cmp(&right_primitive.value_string);
                         }
                         ordering
                     } else {
@@ -403,16 +390,13 @@ impl Container for Array {
         pending_new_line_comment_block: bool,
     ) -> Result<bool, Error> {
         if let Some(value_ref) = &mut self.current_line_value {
-            (*value_ref.borrow_mut())
-                .meta()
-                .set_end_of_line_comment(content)?;
+            (*value_ref.borrow_mut()).meta().set_end_of_line_comment(content)?;
             Ok(false)
         } else {
             if pending_new_line_comment_block {
                 self.pending_comments.push(Comment::Break);
             }
-            self.pending_comments
-                .push(Comment::Line(content.to_string()));
+            self.pending_comments.push(Comment::Line(content.to_string()));
             Ok(true)
         }
     }
@@ -624,16 +608,13 @@ impl Container for Object {
         pending_new_line_comment_block: bool,
     ) -> Result<bool, Error> {
         if let Some(value_ref) = &mut self.current_line_value {
-            (*value_ref.borrow_mut())
-                .meta()
-                .set_end_of_line_comment(content)?;
+            (*value_ref.borrow_mut()).meta().set_end_of_line_comment(content)?;
             Ok(false)
         } else {
             if pending_new_line_comment_block {
                 self.pending_comments.push(Comment::Break);
             }
-            self.pending_comments
-                .push(Comment::Line(content.to_string()));
+            self.pending_comments.push(Comment::Line(content.to_string()));
             Ok(true)
         }
     }
@@ -719,11 +700,7 @@ impl std::fmt::Debug for Object {
             f,
             "Object of {} propert{}",
             self.properties.len(),
-            if self.properties.len() == 1 {
-                "y"
-            } else {
-                "ies"
-            }
+            if self.properties.len() == 1 { "y" } else { "ies" }
         )
     }
 }

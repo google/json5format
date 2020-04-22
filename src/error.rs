@@ -129,11 +129,7 @@ impl std::fmt::Display for Error {
 macro_rules! test_error {
     ($err:expr) => {
         Error::test_failure(
-            Some(Location::new(
-                Some(file!().to_string()),
-                line!() as usize,
-                column!() as usize,
-            )),
+            Some(Location::new(Some(file!().to_string()), line!() as usize, column!() as usize)),
             $err,
         )
     };

@@ -169,11 +169,7 @@ struct Capturer {
 
 impl Capturer {
     fn new(regex: &'static Regex) -> Self {
-        Self {
-            regex,
-            overall_match: None,
-            locations: regex.capture_locations(),
-        }
+        Self { regex, overall_match: None, locations: regex.capture_locations() }
     }
 
     fn capture<'a>(&mut self, text: &'a str) -> Option<Match<'a>> {
@@ -514,11 +510,7 @@ impl<'parser> Parser<'parser> {
     }
 
     pub fn location(&self) -> Option<Location> {
-        Some(Location::new(
-            self.filename.clone(),
-            self.line_number,
-            self.column_number,
-        ))
+        Some(Location::new(self.filename.clone(), self.line_number, self.column_number))
     }
 
     pub fn error(&self, err: impl std::fmt::Display) -> Error {
@@ -530,10 +522,7 @@ impl<'parser> Parser<'parser> {
                 self.current_line.len() - self.column_number
             });
         }
-        Error::parse(
-            self.location(),
-            format!("{}:\n{}\n{}", err, self.current_line, indicator),
-        )
+        Error::parse(self.location(), format!("{}:\n{}\n{}", err, self.current_line, indicator))
     }
 
     fn consume_if_matched<'a>(&mut self, matched: Option<Match<'a>>) -> bool {
@@ -549,10 +538,8 @@ impl<'parser> Parser<'parser> {
                     self.next_line_number += 1;
                     self.next_column_number = 1;
                     if index < self.remaining.len() {
-                        self.next_line = self.remaining[index..]
-                            .lines()
-                            .next()
-                            .unwrap_or(self.current_line);
+                        self.next_line =
+                            self.remaining[index..].lines().next().unwrap_or(self.current_line);
                     }
                 } else {
                     self.next_column_number += 1;
@@ -679,10 +666,7 @@ impl<'parser> Parser<'parser> {
             Value::Array(array) => Ok(array),
             unexpected => Err(Error::internal(
                 self.location(),
-                format!(
-                    "Final scope should be an Array, but scope was {:?}",
-                    unexpected
-                ),
+                format!("Final scope should be an Array, but scope was {:?}", unexpected),
             )),
         }
     }
@@ -779,12 +763,8 @@ mod tests {
         let group_id = group_id.unwrap_or(1);
         println!("expected capture id: '{}'", group_id);
 
-        let capture = regex
-            .captures(&test_string)
-            .ok_or_else(|| test_error!("capture failed"))?;
-        let overall_match = capture
-            .get(0)
-            .ok_or_else(|| test_error!("regex did not match"))?;
+        let capture = regex.captures(&test_string).ok_or_else(|| test_error!("capture failed"))?;
+        let overall_match = capture.get(0).ok_or_else(|| test_error!("regex did not match"))?;
         println!(
             "overall match: '{}', length = {}",
             overall_match.as_str().escape_debug(),
@@ -1342,72 +1322,38 @@ mod tests {
 
     #[test]
     fn test_regex_non_string_primitive() {
+        test_regex(*NON_STRING_PRIMITIVE, RegexTest { matches: "null", ..Default::default() })
+            .unwrap();
+
         test_regex(
             *NON_STRING_PRIMITIVE,
-            RegexTest {
-                matches: "null",
-                ..Default::default()
-            },
+            RegexTest { matches: "NULL", error: Some("capture failed"), ..Default::default() },
         )
         .unwrap();
 
         test_regex(
             *NON_STRING_PRIMITIVE,
-            RegexTest {
-                matches: "NULL",
-                error: Some("capture failed"),
-                ..Default::default()
-            },
+            RegexTest { matches: "nullify", error: Some("capture failed"), ..Default::default() },
+        )
+        .unwrap();
+
+        test_regex(*NON_STRING_PRIMITIVE, RegexTest { matches: "true", ..Default::default() })
+            .unwrap();
+
+        test_regex(
+            *NON_STRING_PRIMITIVE,
+            RegexTest { matches: "True", error: Some("capture failed"), ..Default::default() },
         )
         .unwrap();
 
         test_regex(
             *NON_STRING_PRIMITIVE,
-            RegexTest {
-                matches: "nullify",
-                error: Some("capture failed"),
-                ..Default::default()
-            },
+            RegexTest { matches: "truest", error: Some("capture failed"), ..Default::default() },
         )
         .unwrap();
 
-        test_regex(
-            *NON_STRING_PRIMITIVE,
-            RegexTest {
-                matches: "true",
-                ..Default::default()
-            },
-        )
-        .unwrap();
-
-        test_regex(
-            *NON_STRING_PRIMITIVE,
-            RegexTest {
-                matches: "True",
-                error: Some("capture failed"),
-                ..Default::default()
-            },
-        )
-        .unwrap();
-
-        test_regex(
-            *NON_STRING_PRIMITIVE,
-            RegexTest {
-                matches: "truest",
-                error: Some("capture failed"),
-                ..Default::default()
-            },
-        )
-        .unwrap();
-
-        test_regex(
-            *NON_STRING_PRIMITIVE,
-            RegexTest {
-                matches: "false",
-                ..Default::default()
-            },
-        )
-        .unwrap();
+        test_regex(*NON_STRING_PRIMITIVE, RegexTest { matches: "false", ..Default::default() })
+            .unwrap();
 
         for prefix in &["", "-", "+"] {
             for exp_prefix in &["", "-", "+"] {
@@ -1432,37 +1378,25 @@ mod tests {
 
             test_regex(
                 *NON_STRING_PRIMITIVE,
-                RegexTest {
-                    matches: &(prefix.to_string() + "0x1a2b3e4f"),
-                    ..Default::default()
-                },
+                RegexTest { matches: &(prefix.to_string() + "0x1a2b3e4f"), ..Default::default() },
             )
             .unwrap();
 
             test_regex(
                 *NON_STRING_PRIMITIVE,
-                RegexTest {
-                    matches: &(prefix.to_string() + "0X1a2b3e4f"),
-                    ..Default::default()
-                },
+                RegexTest { matches: &(prefix.to_string() + "0X1a2b3e4f"), ..Default::default() },
             )
             .unwrap();
 
             test_regex(
                 *NON_STRING_PRIMITIVE,
-                RegexTest {
-                    matches: &(prefix.to_string() + "0x1A2B3E4F"),
-                    ..Default::default()
-                },
+                RegexTest { matches: &(prefix.to_string() + "0x1A2B3E4F"), ..Default::default() },
             )
             .unwrap();
 
             test_regex(
                 *NON_STRING_PRIMITIVE,
-                RegexTest {
-                    matches: &(prefix.to_string() + "0X1a2B3e4F"),
-                    ..Default::default()
-                },
+                RegexTest { matches: &(prefix.to_string() + "0X1a2B3e4F"), ..Default::default() },
             )
             .unwrap();
 
@@ -1486,41 +1420,24 @@ mod tests {
             )
             .unwrap();
 
+            test_regex(*NON_STRING_PRIMITIVE, RegexTest { matches: "NaN", ..Default::default() })
+                .unwrap();
+
             test_regex(
                 *NON_STRING_PRIMITIVE,
-                RegexTest {
-                    matches: "NaN",
-                    ..Default::default()
-                },
+                RegexTest { matches: "NAN", error: Some("capture failed"), ..Default::default() },
             )
             .unwrap();
 
             test_regex(
                 *NON_STRING_PRIMITIVE,
-                RegexTest {
-                    matches: "NAN",
-                    error: Some("capture failed"),
-                    ..Default::default()
-                },
+                RegexTest { matches: "NaN0", error: Some("capture failed"), ..Default::default() },
             )
             .unwrap();
 
             test_regex(
                 *NON_STRING_PRIMITIVE,
-                RegexTest {
-                    matches: "NaN0",
-                    error: Some("capture failed"),
-                    ..Default::default()
-                },
-            )
-            .unwrap();
-
-            test_regex(
-                *NON_STRING_PRIMITIVE,
-                RegexTest {
-                    matches: "Infinity",
-                    ..Default::default()
-                },
+                RegexTest { matches: "Infinity", ..Default::default() },
             )
             .unwrap();
 
@@ -1546,10 +1463,7 @@ mod tests {
 
             test_regex(
                 *NON_STRING_PRIMITIVE,
-                RegexTest {
-                    matches: &(prefix.to_string() + "0"),
-                    ..Default::default()
-                },
+                RegexTest { matches: &(prefix.to_string() + "0"), ..Default::default() },
             )
             .unwrap();
 
@@ -1564,28 +1478,19 @@ mod tests {
 
             test_regex(
                 *NON_STRING_PRIMITIVE,
-                RegexTest {
-                    matches: &(prefix.to_string() + "12345.67890"),
-                    ..Default::default()
-                },
+                RegexTest { matches: &(prefix.to_string() + "12345.67890"), ..Default::default() },
             )
             .unwrap();
 
             test_regex(
                 *NON_STRING_PRIMITIVE,
-                RegexTest {
-                    matches: &(prefix.to_string() + ".67890"),
-                    ..Default::default()
-                },
+                RegexTest { matches: &(prefix.to_string() + ".67890"), ..Default::default() },
             )
             .unwrap();
 
             test_regex(
                 *NON_STRING_PRIMITIVE,
-                RegexTest {
-                    matches: &(prefix.to_string() + "12345."),
-                    ..Default::default()
-                },
+                RegexTest { matches: &(prefix.to_string() + "12345."), ..Default::default() },
             )
             .unwrap();
         }
@@ -1704,137 +1609,56 @@ mod tests {
 
     #[test]
     fn test_regex_braces() {
-        test_regex(
-            *BRACE,
-            RegexTest {
-                matches: "[",
-                trailing: " 1234 ]",
-                ..Default::default()
-            },
-        )
-        .unwrap();
+        test_regex(*BRACE, RegexTest { matches: "[", trailing: " 1234 ]", ..Default::default() })
+            .unwrap();
+
+        test_regex(*BRACE, RegexTest { matches: "[", trailing: "true]", ..Default::default() })
+            .unwrap();
 
         test_regex(
             *BRACE,
-            RegexTest {
-                matches: "[",
-                trailing: "true]",
-                ..Default::default()
-            },
+            RegexTest { matches: "[", trailing: "\n  'item',\n  'item2'\n]", ..Default::default() },
         )
         .unwrap();
 
-        test_regex(
-            *BRACE,
-            RegexTest {
-                matches: "[",
-                trailing: "\n  'item',\n  'item2'\n]",
-                ..Default::default()
-            },
-        )
-        .unwrap();
+        test_regex(*BRACE, RegexTest { matches: "]", trailing: ",[1234],", ..Default::default() })
+            .unwrap();
+
+        test_regex(*BRACE, RegexTest { matches: "{", trailing: " 1234 }", ..Default::default() })
+            .unwrap();
+
+        test_regex(*BRACE, RegexTest { matches: "{", trailing: "true}", ..Default::default() })
+            .unwrap();
 
         test_regex(
             *BRACE,
-            RegexTest {
-                matches: "]",
-                trailing: ",[1234],",
-                ..Default::default()
-            },
+            RegexTest { matches: "{", trailing: "\n  'item',\n  'item2'\n}", ..Default::default() },
         )
         .unwrap();
 
-        test_regex(
-            *BRACE,
-            RegexTest {
-                matches: "{",
-                trailing: " 1234 }",
-                ..Default::default()
-            },
-        )
-        .unwrap();
-
-        test_regex(
-            *BRACE,
-            RegexTest {
-                matches: "{",
-                trailing: "true}",
-                ..Default::default()
-            },
-        )
-        .unwrap();
-
-        test_regex(
-            *BRACE,
-            RegexTest {
-                matches: "{",
-                trailing: "\n  'item',\n  'item2'\n}",
-                ..Default::default()
-            },
-        )
-        .unwrap();
-
-        test_regex(
-            *BRACE,
-            RegexTest {
-                matches: "}",
-                trailing: ",{1234},",
-                ..Default::default()
-            },
-        )
-        .unwrap();
+        test_regex(*BRACE, RegexTest { matches: "}", trailing: ",{1234},", ..Default::default() })
+            .unwrap();
     }
 
     #[test]
     fn test_regex_command_colon() {
         test_regex(
             *COMMA,
-            RegexTest {
-                matches: ",",
-                trailing: "\n  'item',\n  'item2'\n}",
-                ..Default::default()
-            },
+            RegexTest { matches: ",", trailing: "\n  'item',\n  'item2'\n}", ..Default::default() },
         )
         .unwrap();
 
-        test_regex(
-            *COMMA,
-            RegexTest {
-                matches: ",",
-                trailing: "{1234},",
-                ..Default::default()
-            },
-        )
-        .unwrap();
+        test_regex(*COMMA, RegexTest { matches: ",", trailing: "{1234},", ..Default::default() })
+            .unwrap();
+
+        test_capture(&*COLON, None, RegexTest { matches: ":", ..Default::default() }).unwrap();
+
+        test_capture(&*COLON, None, RegexTest { matches: "  \t :", ..Default::default() }).unwrap();
 
         test_capture(
             &*COLON,
             None,
-            RegexTest {
-                matches: ":",
-                ..Default::default()
-            },
-        )
-        .unwrap();
-
-        test_capture(
-            &*COLON,
-            None,
-            RegexTest {
-                matches: "  \t :",
-                ..Default::default()
-            },
-        )
-        .unwrap();
-
-        test_capture(
-            &*COLON,
-            None,
-            RegexTest {
-                error: Some("capture failed"),
-                matches: " \n :",
-                ..Default::default()
-            },
+            RegexTest { error: Some("capture failed"), matches: " \n :", ..Default::default() },
         )
         .unwrap();
     }
@@ -1844,10 +1668,8 @@ mod tests {
         let line_comment = Comment::Line("a line comment".to_owned());
         assert!(line_comment.is_line());
 
-        let block_comment = Comment::Block {
-            lines: vec!["a block".into(), "comment".into()],
-            align: true,
-        };
+        let block_comment =
+            Comment::Block { lines: vec!["a block".into(), "comment".into()], align: true };
         assert!(block_comment.is_block());
 
         let primitive_value = Primitive::new("l33t".to_owned(), vec![]);

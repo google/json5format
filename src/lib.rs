@@ -334,9 +334,7 @@ pub fn format(
     let parsed_document = ParsedDocument::from_str(buffer, filename)?;
     let options = match options {
         Some(options) => options,
-        None => FormatOptions {
-            ..Default::default()
-        },
+        None => FormatOptions { ..Default::default() },
     };
     Json5Format::with_options(options)?.to_utf8(&parsed_document)
 }
@@ -368,10 +366,8 @@ impl Json5Format {
         // Set the SubpathOptions for the document array items to prevent trailing commas.
         document_root_options.options.trailing_commas = false;
 
-        let mut options_by_path = options
-            .options_by_path
-            .drain()
-            .collect::<HashMap<&'static str, HashSet<PathOption>>>();
+        let mut options_by_path =
+            options.options_by_path.drain().collect::<HashMap<&'static str, HashSet<PathOption>>>();
 
         // Default options remain after draining the `options_by_path`
         let default_options = options;
@@ -407,9 +403,7 @@ impl Json5Format {
 
     /// Create and return a Json5Format, with the default settings.
     pub fn new() -> Result<Self, Error> {
-        Self::with_options(FormatOptions {
-            ..Default::default()
-        })
+        Self::with_options(FormatOptions { ..Default::default() })
     }
 
     /// Formats the parsed document into a new Vector of UTF8 bytes.
@@ -430,10 +424,8 @@ impl Json5Format {
     /// # Ok::<(),anyhow::Error>(())
     /// ```
     pub fn to_utf8(&self, parsed_document: &ParsedDocument) -> Result<Vec<u8>, Error> {
-        let formatter = Formatter::new(
-            self.default_options.clone(),
-            self.document_root_options_ref.clone(),
-        );
+        let formatter =
+            Formatter::new(self.default_options.clone(), self.document_root_options_ref.clone());
         formatter.format(parsed_document)
     }
 
