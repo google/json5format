@@ -1,6 +1,6 @@
 # json5format
 
-**`json5format` is a general purpose Rust library that formats [JSON5](https://json5.org) JSON5 (a.k.a., "JSON for Humans"), preserving contextual line and block comments.**
+**`json5format` is a general purpose Rust library that formats [JSON5](https://json5.org) (a.k.a., "JSON for Humans"), preserving contextual line and block comments.**
 
 [![crates.io](https://img.shields.io/crates/v/json5format.svg)](https://crates.io/crates/json5format)
 [![license](https://img.shields.io/badge/license-BSD3.0-blue.svg)](https://github.com/google/json5format/LICENSE)
