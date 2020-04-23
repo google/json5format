@@ -35,5 +35,6 @@ OPTIONS:
 
 ARGS:
 <files>...    Files to format (use "-" for stdin)
+```
 
 NOTE: This is not an officially supported Google product.
