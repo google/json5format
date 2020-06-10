@@ -169,6 +169,9 @@ pub(crate) struct Formatter {
     /// The UTF-8 bytes of the output document as it is being generated.
     bytes: Vec<u8>,
 
+    /// The 1-based column number of the next character to be appended.
+    column: usize,
+
     /// While generating the formatted document, these are the options to be applied at each nesting
     /// depth and path, from the document root to the object or array currently being generated. If
     /// the current path has no explicit options, the value at the top of the stack is None.
@@ -192,6 +195,7 @@ impl Formatter {
             depth: 0,
             pending_indent: false,
             bytes: vec![],
+            column: 1,
             subpath_options_stack: vec![Some(document_root_options_ref)],
             default_options,
         }
@@ -207,13 +211,46 @@ impl Formatter {
         Ok(self)
     }
 
+    /// Returns number of spaces required before the next value, at the current indent depth.
+    fn get_indent_spaces(&self) -> usize {
+        self.depth * self.default_options.indent_by
+    }
+
+    /// Returns the column of the next character to be appended.
+    /// If pending indent, the column after the current indent size (number of spaces) is returned
+    /// (however, if the next character will be a newline it will actually be appended in column 1,
+    /// since indentation spaces are not added to otherwise blank lines).
+    fn get_next_column(&self) -> usize {
+        if self.pending_indent {
+            self.get_indent_spaces()
+        } else {
+            self.column
+        }
+    }
+
+    /// Appends the given string, indenting if required.
     pub fn append(&mut self, content: &str) -> Result<&mut Formatter, Error> {
         if self.pending_indent && !content.starts_with("\n") {
-            let spaces = self.depth * self.default_options.indent_by;
+            let spaces = self.get_indent_spaces();
             self.bytes.extend_from_slice(" ".repeat(spaces).as_bytes());
+            self.column = spaces + 1;
             self.pending_indent = false;
         }
-        self.bytes.extend_from_slice(content.as_bytes());
+        if content.ends_with("\n") {
+            self.column = 1;
+            self.bytes.extend_from_slice(content.as_bytes());
+        } else {
+            let mut first = true;
+            for line in content.lines() {
+                if !first {
+                    self.bytes.extend_from_slice("\n".as_bytes());
+                    self.column = 1;
+                }
+                self.bytes.extend_from_slice(line.as_bytes());
+                self.column += line.len();
+                first = false;
+            }
+        }
         Ok(self)
     }
 
@@ -221,6 +258,8 @@ impl Formatter {
         self.append("\n")
     }
 
+    /// Outputs a newline (unless this is the first line), and sets the `pending_indent` flag to
+    /// indicate the next non-blank line should be indented.
     pub fn start_next_line(&mut self) -> Result<&mut Formatter, Error> {
         if self.bytes.len() > 0 {
             self.append_newline()?;
@@ -421,12 +460,24 @@ impl Formatter {
         Ok(self)
     }
 
+    /// Outputs the value's end-of-line comment. If the comment has multiple lines, the first line
+    /// is written from the current position and all subsequent lines are written on their own line,
+    /// left-aligned directly under the first comment.
     fn append_end_of_line_comment(
         &mut self,
         comment: &Option<String>,
     ) -> Result<&mut Formatter, Error> {
         if let Some(comment) = comment {
-            self.append(&format!(" //{}", comment))?;
+            let start_column = self.get_next_column();
+            let mut first = true;
+            for line in comment.lines() {
+                if !first {
+                    self.append_newline()?;
+                    self.append(&" ".repeat(start_column - 1))?;
+                }
+                self.append(&format!(" //{}", line))?;
+                first = false;
+            }
         }
         Ok(self)
     }

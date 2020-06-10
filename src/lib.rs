@@ -36,7 +36,8 @@
 //!       "contact_options": [
 //!           {
 //!               "home": {
-//!                   "email": "jj@notreallygmail.com",
+//!                   "email": "jj@notreallygmail.com",   // This was the original user id.
+//!                                                       // Now user id's are hash values.
 //!                   "phone": "212-555-4321"
 //!               },
 //!               "other": {
@@ -141,7 +142,8 @@
 //!       },
 //!       home: {
 //!         phone: "212-555-4321",
-//!         email: "jj@notreallygmail.com",
+//!         email: "jj@notreallygmail.com", // This was the original user id.
+//!                                         // Now user id's are hash values.
 //!       },
 //!       other: { email: "volunteering@serviceprojectsrus.org" },
 //!     },
@@ -177,6 +179,10 @@
 //!   * The line comment will retain its relative position, above `contact_options`.
 //!   * The block comment will retain its relative position, inside and at the end of the `address`
 //!     object.
+//!   * The end-of-line comment after `home`/`email` will retain its relative location (appended at
+//!     the end of the `email` value) and any subsequent line comments with the same vertical
+//!     alignment are also retained, and vertically adjusted to be left-aligned with the new
+//!     position of the first comment line.
 //!
 //! # Formatter Behavior Details
 //!
