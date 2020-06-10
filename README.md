@@ -8,6 +8,7 @@
 ![json5format](https://github.com/google/json5format/workflows/json5format/badge.svg)
 
 ## `json5format` Rust library
+
 The [`json5format` library](https://crates.io/crates/json5format) includes APIs to customize the document format, with style options configurable both globally (affecting the entire document) as well as tailoring specific subsets of a target JSON5 schema. (See the [Rust package documentation](https://docs.rs/json5format/0.1.0/json5format) for more details and examples.)
 
 ## `formatjson5` command line tool
