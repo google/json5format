@@ -211,27 +211,10 @@ impl Formatter {
         Ok(self)
     }
 
-    /// Returns number of spaces required before the next value, at the current indent depth.
-    pub fn get_indent_spaces(&self) -> usize {
-        self.depth * self.default_options.indent_by
-    }
-
-    /// Returns the column of the next character to be appended.
-    /// If pending indent, the column after the current indent size (number of spaces) is returned
-    /// (however, if the next character will be a newline it will actually be appended in column 1,
-    /// since indentation spaces are not added to otherwise blank lines).
-    pub fn get_next_column(&self) -> usize {
-        if self.pending_indent {
-            self.get_indent_spaces()
-        } else {
-            self.column
-        }
-    }
-
     /// Appends the given string, indenting if required.
     pub fn append(&mut self, content: &str) -> Result<&mut Formatter, Error> {
         if self.pending_indent && !content.starts_with("\n") {
-            let spaces = self.get_indent_spaces();
+            let spaces = self.depth * self.default_options.indent_by;
             self.bytes.extend_from_slice(" ".repeat(spaces).as_bytes());
             self.column = spaces + 1;
             self.pending_indent = false;
@@ -468,7 +451,7 @@ impl Formatter {
         comment: &Option<String>,
     ) -> Result<&mut Formatter, Error> {
         if let Some(comment) = comment {
-            let start_column = self.get_next_column();
+            let start_column = self.column;
             let mut first = true;
             for line in comment.lines() {
                 if !first {

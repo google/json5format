@@ -202,6 +202,7 @@ impl ContainedComments {
     ///     end_of_line_comment, the container should insert a line_comment_break before inserting
     ///     the next line comment. This should only be true if this standalone line comment was
     ///     preceded by one or more standalone line comments and one or more blank lines.
+    ///     (This flag is ignored if the comment is part of an end-of-line comment.)
     ///
     /// # Returns
     ///   true if the line comment is standalone, that is, not an end_of_line_comment
@@ -214,7 +215,7 @@ impl ContainedComments {
         if let Some(value_ref) = &mut self.current_line_value {
             if start_column == *self.end_of_line_comment_start_column.get_or_insert(start_column) {
                 (*value_ref.borrow_mut()).comments().append_end_of_line_comment(content)?;
-                return Ok(false);
+                return Ok(false); // the comment is (part of) an end-of-line comment
             }
             self.current_line_value = None;
         }
