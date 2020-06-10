@@ -256,7 +256,8 @@
 //! ## Associated Comments
 //!
 //! * All comments immediately preceding an element (value or start of an array or object), and
-//!   trailing line comments on the same line as the element, are retained and move with the
+//!   trailing line comments (starting on the same line as the element, optionally continued on
+//!   successive lines if all line comments are left-aligned), are retained and move with the
 //!   associated item if the item is repositioned during sorting.
 //! * All line and block comments are retained. Typically, the comments are re-aligned vertically
 //!   (indented) with the values with which they were associated.

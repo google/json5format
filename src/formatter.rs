@@ -212,7 +212,7 @@ impl Formatter {
     }
 
     /// Returns number of spaces required before the next value, at the current indent depth.
-    fn get_indent_spaces(&self) -> usize {
+    pub fn get_indent_spaces(&self) -> usize {
         self.depth * self.default_options.indent_by
     }
 
@@ -220,7 +220,7 @@ impl Formatter {
     /// If pending indent, the column after the current indent size (number of spaces) is returned
     /// (however, if the next character will be a newline it will actually be appended in column 1,
     /// since indentation spaces are not added to otherwise blank lines).
-    fn get_next_column(&self) -> usize {
+    pub fn get_next_column(&self) -> usize {
         if self.pending_indent {
             self.get_indent_spaces()
         } else {
@@ -268,7 +268,7 @@ impl Formatter {
         Ok(self)
     }
 
-    pub fn format_content<F>(&mut self, content_fn: F) -> Result<&mut Formatter, Error>
+    fn format_content<F>(&mut self, content_fn: F) -> Result<&mut Formatter, Error>
     where
         F: FnOnce(&mut Formatter) -> Result<&mut Formatter, Error>,
     {
@@ -378,7 +378,7 @@ impl Formatter {
         let collapsed = is_first
             && is_last
             && value.is_primitive()
-            && !value.meta().has_comments()
+            && !value.has_comments()
             && !container_has_pending_comments
             && self.options_in_scope().collapse_containers_of_one;
         match name {
@@ -394,12 +394,12 @@ impl Formatter {
             if is_first {
                 self.start_next_line()?;
             }
-            self.format_comments(&value.meta().get_comments(), is_first)?;
+            self.format_comments(&value.comments().before_value(), is_first)?;
         }
         if let Some(name) = name {
             self.append(&format!("{}: ", name))?;
         }
-        value.meta().format(self)?;
+        value.format(self)?;
         self.exit_scope();
         //   ^^^^^^^^^^
         // Named property or item SubpathOptions affect Formatting above exit_scope(...)
@@ -408,7 +408,7 @@ impl Formatter {
             self.append(" ")?;
         } else {
             self.append_comma(is_last)?
-                .append_end_of_line_comment(value.meta().get_end_of_line_comment())?
+                .append_end_of_line_comment(value.comments().end_of_line())?
                 .start_next_line()?;
         }
         Ok(self)

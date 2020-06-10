@@ -258,8 +258,8 @@ impl<'parser> Parser<'parser> {
         F: FnOnce(&mut dyn Container) -> Result<T, Error>,
     {
         match &mut *self.current_scope().borrow_mut() {
-            Value::Array(array) => f(array),
-            Value::Object(object) => f(object),
+            Value::Array { val, .. } => f(val),
+            Value::Object { val, .. } => f(val),
             unexpected => Err(Error::internal(
                 self.location(),
                 format!(
@@ -275,7 +275,7 @@ impl<'parser> Parser<'parser> {
         F: FnOnce(&mut Array) -> Result<T, Error>,
     {
         match &mut *self.current_scope().borrow_mut() {
-            Value::Array(array) => f(array),
+            Value::Array { val, .. } => f(val),
             unexpected => Err(self.error(format!(
                 "Invalid Array token found while parsing an {:?} (mismatched braces?)",
                 unexpected
@@ -288,7 +288,7 @@ impl<'parser> Parser<'parser> {
         F: FnOnce(&mut Object) -> Result<T, Error>,
     {
         match &mut *self.current_scope().borrow_mut() {
-            Value::Object(object) => f(object),
+            Value::Object { val, .. } => f(val),
             unexpected => Err(self.error(format!(
                 "Invalid Object token found while parsing an {:?} (mismatched braces?)",
                 unexpected
@@ -297,10 +297,7 @@ impl<'parser> Parser<'parser> {
     }
 
     fn is_in_array(&self) -> bool {
-        match &mut *self.current_scope().borrow_mut() {
-            Value::Array(_) => true,
-            _ => false,
-        }
+        (*self.current_scope().borrow()).is_array()
     }
 
     fn is_in_object(&self) -> bool {
@@ -666,7 +663,7 @@ impl<'parser> Parser<'parser> {
             .map_err(|_| Error::internal(None, "Rc<> for document array could not be unwrapped."))?
             .into_inner()
         {
-            Value::Array(array) => Ok(array),
+            Value::Array { val, .. } => Ok(val),
             unexpected => Err(Error::internal(
                 self.location(),
                 format!("Final scope should be an Array, but scope was {:?}", unexpected),

@@ -1,6 +1,6 @@
 [package]
 name = "json5format"
-version = "0.1.2"
+version = "0.1.3"
 authors = ["Rich Kadel <richkadel@google.com>"]
 edition = "2018"
 keywords = ["json", "json5", "style", "formatter", "comments"]
