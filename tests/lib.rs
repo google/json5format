@@ -1664,3 +1664,47 @@ fn test_validate_example_in_documentation() {
     })
     .unwrap();
 }
+
+#[test]
+fn test_parse_error_block_comment_not_closed() {
+    test_format(FormatTest {
+        input: r##"
+/*
+    Block comment 1
+        *//* first line of
+  Unclosed block comment 2
+    "##,
+        error: Some(
+            r#"Parse error: 4:13: Block comment started without closing "*/":
+        *//* first line of
+            ^"#,
+        ),
+        ..Default::default()
+    })
+    .unwrap();
+}
+
+#[test]
+fn test_multibyte_unicode_chars() {
+    test_format(FormatTest {
+        options: None,
+        input: r##"/*
+
+
+#
+*//*
+󠁯 
+*/"##,
+        expected: r##"/*
+
+
+#
+*/
+
+/*
+󠁯 */
+"##,
+        ..Default::default()
+    })
+    .unwrap();
+}
