@@ -227,11 +227,18 @@ pub(crate) struct Parser<'parser> {
     /// and so on.
     scope_stack: Vec<Rc<RefCell<Value>>>,
 
+    /// To avoid accidentally overflowing the program stack, limit the number of
+    /// nested scopes and generate an error if it is exceeded.
+    nesting_limit: usize,
+
     /// Captures a colon token when expected.
     colon_capturer: Capturer,
 }
 
 impl<'parser> Parser<'parser> {
+    /// The default limit of nested scopes when parsing a JSON5 document.
+    pub const DEFAULT_NESTING_LIMIT: usize = 1000;
+
     pub fn new(filename: &'parser Option<String>) -> Self {
         let remaining = "";
         let current_line = &remaining;
@@ -244,9 +251,17 @@ impl<'parser> Parser<'parser> {
             column_number: 1,
             next_line_number: 1,
             next_column_number: 1,
-            scope_stack: vec![Rc::new(RefCell::new(Array::new(vec![])))],
+            scope_stack: Vec::default(),
+            nesting_limit: Self::DEFAULT_NESTING_LIMIT,
             colon_capturer: Capturer::new(&COLON),
         }
+    }
+
+    /// To avoid accidentally overflowing the program stack, there is a mutable
+    /// limit on the number of nested scopes allowed. If this limit is exceeded
+    /// while parsing a document, a parser error is generated.
+    pub fn set_nesting_limit(&mut self, new_limit: usize) {
+        self.nesting_limit = new_limit;
     }
 
     fn current_scope(&self) -> Rc<RefCell<Value>> {
@@ -311,6 +326,12 @@ impl<'parser> Parser<'parser> {
         self.with_container(|container| container.add_value(value_ref.clone(), self))?;
         if is_container {
             self.scope_stack.push(value_ref.clone());
+            if self.scope_stack.len() > self.nesting_limit {
+                return Err(self.error(format!(
+                    "The given JSON5 document exceeds the parser's nesting limit of {}",
+                    self.nesting_limit
+                )));
+            }
         }
         Ok(())
     }
@@ -483,7 +504,11 @@ impl<'parser> Parser<'parser> {
 
     fn exit_scope(&mut self) -> Result<(), Error> {
         self.scope_stack.pop();
-        Ok(())
+        if self.scope_stack.is_empty() {
+            Err(self.error("Closing brace without a matching opening brace"))
+        } else {
+            Ok(())
+        }
     }
 
     fn close_object(&mut self) -> Result<(), Error> {
@@ -515,7 +540,7 @@ impl<'parser> Parser<'parser> {
             indicator += &"~".repeat(if self.line_number == self.next_line_number {
                 self.next_column_number - self.column_number - 1
             } else {
-                self.current_line.len() - self.column_number
+                0
             });
         }
         Error::parse(self.location(), format!("{}:\n{}\n{}", err, self.current_line, indicator))
@@ -563,8 +588,34 @@ impl<'parser> Parser<'parser> {
         }
     }
 
+    /// Parse the given document string as a JSON5 document containing Array
+    /// elements (with implicit outer braces). Document locations (use in, for
+    /// example, error messages), are 1-based and start at line 1, column 1.
     pub fn parse(&mut self, buffer: &'parser str) -> Result<Array, Error> {
+        self.parse_from_location(buffer, 1, 1)
+    }
+
+    /// Parse the given document string as a JSON5 document containing Array
+    /// elements (with implicit outer braces), and use the given 1-based line
+    /// and column numbers when referring to document locations.
+    pub fn parse_from_location(
+        &mut self,
+        buffer: &'parser str,
+        starting_line_number: usize,
+        starting_column_number: usize,
+    ) -> Result<Array, Error> {
         self.remaining = buffer;
+        self.current_line = &self.remaining;
+
+        assert!(starting_line_number > 0, "document line numbers are 1-based");
+        self.next_line_number = starting_line_number;
+        self.next_column_number = starting_column_number;
+
+        self.next_line = self.current_line;
+        self.line_number = self.next_line_number - 1;
+        self.column_number = self.next_column_number - 1;
+        self.scope_stack = vec![Rc::new(RefCell::new(Array::new(vec![])))];
+
         let mut next_token = Capturer::new(&NEXT_TOKEN);
         let mut single_quoted = Capturer::new(&SINGLE_QUOTED);
         let mut double_quoted = Capturer::new(&DOUBLE_QUOTED);
@@ -1679,5 +1730,86 @@ mod tests {
 
         let object_value = Object::new(vec![]);
         assert!(object_value.is_object());
+    }
+
+    #[test]
+    fn test_document_exceeds_nesting_limit() {
+        let mut parser = Parser::new(&None);
+        parser.set_nesting_limit(5);
+        let good_buffer = r##"{
+    list_of_lists_of_lists: [[[]]]
+}"##;
+        parser.parse_from_location(&good_buffer, 8, 15).expect("should NOT exceed nesting limit");
+
+        let bad_buffer = r##"{
+    list_of_lists_of_lists: [[[[]]]]
+}"##;
+        let err = parser
+            .parse_from_location(&bad_buffer, 8, 15)
+            .expect_err("should exceed nesting limit");
+        match err {
+            Error::Parse(_, message) => {
+                assert_eq!(
+                    message,
+                    r##"The given JSON5 document exceeds the parser's nesting limit of 5:
+    list_of_lists_of_lists: [[[[]]]]
+                               ^"##
+                )
+            }
+            _ => panic!("expected a parser error"),
+        }
+    }
+
+    #[test]
+    fn test_parse_from_location_error_location() {
+        let filename = Some("mixed_content.md".to_string());
+        let mixed_document = r##"
+Mixed Content Doc
+=================
+
+This is a document with embedded JSON5 content.
+
+```json5
+json5_value = {
+    // The next line should generate a parser error
+    999,
+}
+```
+
+End of mixed content document.
+"##;
+        let json5_slice =
+            &mixed_document[mixed_document.find("{").unwrap()..mixed_document.find("}").unwrap()];
+        let mut parser = Parser::new(&filename);
+        let err = parser
+            .parse_from_location(json5_slice, 8, 15)
+            .expect_err("check error message for location");
+        match err {
+            Error::Parse(Some(loc), message) => {
+                assert_eq!(loc.file, Some("mixed_content.md".to_owned()));
+                assert_eq!(loc.line, 10);
+                assert_eq!(loc.col, 5);
+                assert_eq!(
+                    message,
+                    r##"Object values require property names:
+    999,
+    ^~~"##
+                )
+            }
+            _ => panic!("expected a parser error"),
+        }
+    }
+
+    #[test]
+    fn test_doc_with_nulls() {
+        let mut parser = Parser::new(&None);
+        let buffer = "[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[////[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]\u{000}\u{000}\u{000}\u{000}\u{000}\u{000}\u{000}\u{000}\u{000}\u{000}\u{000}\u{000}\u{000}\u{000}]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]";
+        let err = parser.parse(&buffer).expect_err("should fail");
+        match err {
+            Error::Parse(_, message) => {
+                assert!(message.starts_with("Mismatched braces in the document:"));
+            }
+            _ => panic!("expected a parser error"),
+        }
     }
 }

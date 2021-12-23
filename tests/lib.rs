@@ -1689,6 +1689,45 @@ fn test_parse_error_block_comment_not_closed() {
 }
 
 #[test]
+fn test_parse_error_closing_brace_without_opening_brace() {
+    test_format(FormatTest {
+        input: r##"]"##,
+        error: Some(
+            r#"Parse error: 1:1: Closing brace without a matching opening brace:
+]
+^"#,
+        ),
+        ..Default::default()
+    })
+    .unwrap();
+
+    test_format(FormatTest {
+        input: r##"
+
+  ]"##,
+        error: Some(
+            r#"Parse error: 3:3: Closing brace without a matching opening brace:
+  ]
+  ^"#,
+        ),
+        ..Default::default()
+    })
+    .unwrap();
+
+    test_format(FormatTest {
+        input: r##"
+    }"##,
+        error: Some(
+            r#"Parse error: 2:5: Invalid Object token found while parsing an Array of 0 items (mismatched braces?):
+    }
+    ^"#,
+        ),
+        ..Default::default()
+    })
+    .unwrap();
+}
+
+#[test]
 fn test_multibyte_unicode_chars() {
     test_format(FormatTest {
         options: None,
@@ -1725,12 +1764,21 @@ fn test_multibyte_unicode_chars() {
     .unwrap();
 }
 
-fn visit_dir<F>(dir: &Path, cb: F) -> io::Result<()>
+#[test]
+fn test_empty_document() {
+    test_format(FormatTest { options: None, input: "", expected: "", ..Default::default() })
+        .unwrap();
+}
+
+fn visit_dir<F>(dir: &Path, cb: &mut F) -> io::Result<()>
 where
-    F: Fn(&DirEntry) -> Result<(), std::io::Error> + Copy,
+    F: FnMut(&DirEntry) -> Result<(), std::io::Error>,
 {
     if !dir.is_dir() {
-        Err(io::Error::new(io::ErrorKind::Other, "visit_dir called with an invalid path"))
+        Err(io::Error::new(
+            io::ErrorKind::Other,
+            format!("visit_dir called with an invalid path: {:?}", dir),
+        ))
     } else {
         for entry in fs::read_dir(dir)? {
             let entry = entry?;
@@ -1751,26 +1799,52 @@ where
 ///
 /// To manually verify test samples, use:
 ///   cargo test test_parsing_samples_does_not_crash -- --nocapture
+///
+/// To print the full error message (including the line and pointer to the
+/// column), use:
+///   JSON5FORMAT_TEST_FULL_ERRORS=1 cargo test test_parsing_samples_does_not_crash -- --nocapture
+/// To point to a different samples directory:
+///   JSON5FORMAT_TEST_SAMPLES_DIR="/tmp/fuzz_corpus" cargo test test_parsing_samples_does_not_crash
 #[test]
 fn test_parsing_samples_does_not_crash() -> Result<(), std::io::Error> {
-    let mut pathbuf = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    pathbuf.push("samples");
-    visit_dir(pathbuf.as_path(), |entry| {
+    let mut count = 0;
+    let pathbuf = if let Some(samples_dir) = option_env!("JSON5FORMAT_TEST_SAMPLES_DIR") {
+        PathBuf::from(samples_dir)
+    } else {
+        let mut manifest_samples = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        manifest_samples.push("samples");
+        manifest_samples
+    };
+    visit_dir(pathbuf.as_path(), &mut |entry| {
+        count += 1;
         let filename = entry.path().into_os_string().to_string_lossy().to_string();
         let mut buffer = String::new();
-        fs::File::open(&entry.path())?.read_to_string(&mut buffer)?;
+        println!("{}. Parsing: {} ...", count, filename);
+        if let Err(err) = fs::File::open(&entry.path())?.read_to_string(&mut buffer) {
+            println!("Ignoring failure to read the file into a string: {:?}", err);
+            return Ok(());
+        }
         let result = ParsedDocument::from_string(buffer, Some(filename.clone()));
         match result {
             Ok(_parsed_document) => {
-                println!("Successfully parsed: {}", filename);
+                println!("    ... Success");
                 Ok(())
             }
-            Err(Error::Parse(_, message)) => {
-                println!(
-                    "Caught input error:  {}\n    {}",
-                    filename,
-                    message.lines().next().unwrap()
-                );
+            Err(err @ Error::Parse(..)) => {
+                if option_env!("JSON5FORMAT_TEST_FULL_ERRORS") == Some("1") {
+                    println!("    ... Handled input error:\n{}", err);
+                } else if let Error::Parse(some_loc, message) = err {
+                    let loc_string = if let Some(loc) = some_loc {
+                        format!(" at {}:{}", loc.line, loc.col)
+                    } else {
+                        "".to_owned()
+                    };
+                    let mut first_line = message.lines().next().unwrap();
+                    // strip the colon off the end of the first line of a parser error message
+                    first_line = &first_line[0..first_line.len() - 1];
+                    println!("    ... Handled input error{}: {}", loc_string, first_line);
+                }
+
                 // It's OK if the input file is bad, as long as the parser fails
                 // gracefully.
                 Ok(())
