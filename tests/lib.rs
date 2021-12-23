@@ -8,6 +8,10 @@ use {
     json5format::*,
     maplit::hashmap,
     maplit::hashset,
+    std::fs::{self, DirEntry},
+    std::io::{self, Read},
+    std::path::Path,
+    std::path::PathBuf,
 };
 
 struct FormatTest<'a> {
@@ -1663,4 +1667,115 @@ fn test_validate_example_in_documentation() {
         ..Default::default()
     })
     .unwrap();
+}
+
+#[test]
+fn test_parse_error_block_comment_not_closed() {
+    test_format(FormatTest {
+        input: r##"
+/*
+    Block comment 1
+        *//* first line of
+  Unclosed block comment 2
+    "##,
+        error: Some(
+            r#"Parse error: 4:13: Block comment started without closing "*/":
+        *//* first line of
+            ^"#,
+        ),
+        ..Default::default()
+    })
+    .unwrap();
+}
+
+#[test]
+fn test_multibyte_unicode_chars() {
+    test_format(FormatTest {
+        options: None,
+        input: concat!(
+            r##"/*
+
+
+#
+"##,
+            "\u{0010}",
+            r##"*//*
+"##,
+            "\u{E006F} ",
+            r##"
+*/"##
+        ),
+        expected: concat!(
+            r##"/*
+
+
+#
+"##,
+            "\u{0010}",
+            r##"*/
+
+/*
+"##,
+            "\u{E006F} ",
+            r##"*/
+"##
+        ),
+        ..Default::default()
+    })
+    .unwrap();
+}
+
+fn visit_dir<F>(dir: &Path, cb: F) -> io::Result<()>
+where
+    F: Fn(&DirEntry) -> Result<(), std::io::Error> + Copy,
+{
+    if !dir.is_dir() {
+        Err(io::Error::new(io::ErrorKind::Other, "visit_dir called with an invalid path"))
+    } else {
+        for entry in fs::read_dir(dir)? {
+            let entry = entry?;
+            let path = entry.path();
+            if path.is_dir() {
+                visit_dir(&path, cb)?;
+            } else {
+                cb(&entry)?;
+            }
+        }
+        Ok(())
+    }
+}
+
+/// This test is used, for example, to validate fixes to bugs found by oss_fuzz
+/// that may have caused the parser to crash instead of either parsing the input
+/// successfully or returning a more graceful parsing error.
+///
+/// To manually verify test samples, use:
+///   cargo test test_parsing_samples_does_not_crash -- --nocapture
+#[test]
+fn test_parsing_samples_does_not_crash() -> Result<(), std::io::Error> {
+    let mut pathbuf = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    pathbuf.push("samples");
+    visit_dir(pathbuf.as_path(), |entry| {
+        let filename = entry.path().into_os_string().to_string_lossy().to_string();
+        let mut buffer = String::new();
+        fs::File::open(&entry.path())?.read_to_string(&mut buffer)?;
+        let result = ParsedDocument::from_string(buffer, Some(filename.clone()));
+        match result {
+            Ok(_parsed_document) => {
+                println!("Successfully parsed: {}", filename);
+                Ok(())
+            }
+            Err(Error::Parse(_, message)) => {
+                println!(
+                    "Caught input error:  {}\n    {}",
+                    filename,
+                    message.lines().next().unwrap()
+                );
+                // It's OK if the input file is bad, as long as the parser fails
+                // gracefully.
+                Ok(())
+            }
+            Err(e) => Err(io::Error::new(io::ErrorKind::Other, e)),
+        }
+    })
 }

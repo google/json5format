@@ -400,12 +400,7 @@ impl<'parser> Parser<'parser> {
                     })
                 }
             }
-            None => {
-                return Err(Error::internal(
-                    self.location(),
-                    "Block comment regex should support empty block comment",
-                ))
-            }
+            None => return Err(self.error("Block comment started without closing \"*/\"")),
         }
     }
 
@@ -533,15 +528,19 @@ impl<'parser> Parser<'parser> {
             self.current_line = self.next_line;
         }
         if let Some(matched) = matched {
+            let matched_and_remaining = &self.remaining[matched.start()..];
             self.remaining = &self.remaining[matched.end()..];
-            for (index, c) in matched.as_str().chars().enumerate() {
+
+            // If `matched` contains newlines, advance the `next_line` and column, for printing the
+            // location of the next syntax element, in error messages, for example.
+            let mut some_matched_lines = None;
+            for c in matched.as_str().chars() {
                 if c == '\n' {
+                    let matched_lines = some_matched_lines
+                        .get_or_insert_with(|| matched_and_remaining.lines().skip(1));
+                    self.next_line = matched_lines.next().unwrap_or(self.current_line);
                     self.next_line_number += 1;
                     self.next_column_number = 1;
-                    if index < self.remaining.len() {
-                        self.next_line =
-                            self.remaining[index..].lines().next().unwrap_or(self.current_line);
-                    }
                 } else {
                     self.next_column_number += 1;
                 }
