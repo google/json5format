@@ -197,6 +197,42 @@ impl Capturer {
     }
 }
 
+/// This internal struct holds the information needed to print a
+/// contextually-relevant portion of the line (if not the entire line) where a
+/// parser error was caught, the first character of the error on that line, and
+/// the number of characters from that initial character index (1 or more) to
+/// highlight as being part of the error.
+struct ParserErrorContext {
+    /// The error line to be printed with a parser error.
+    line: String,
+
+    /// The starting character of the error (zero-based index).
+    indicator_start: usize,
+
+    /// The number of characters to highlight, including the character at the
+    /// `indicator_start` (at least 1).
+    indicator_len: usize,
+}
+
+impl ParserErrorContext {
+    fn new(line: String, indicator_start: usize, indicator_len: usize) -> Self {
+        assert!(indicator_len >= 1);
+        Self { line, indicator_start, indicator_len }
+    }
+
+    fn line(&self) -> &str {
+        &self.line
+    }
+
+    fn indicator(&self) -> String {
+        let mut line = " ".repeat(self.indicator_start) + "^";
+        if self.indicator_len > 1 {
+            line += &"~".repeat(self.indicator_len - 1);
+        }
+        line
+    }
+}
+
 pub(crate) struct Parser<'parser> {
     /// The remaining text in the input buffer since the last capture.
     remaining: &'parser str,
@@ -535,15 +571,14 @@ impl<'parser> Parser<'parser> {
     }
 
     pub fn error(&self, err: impl std::fmt::Display) -> Error {
-        let mut indicator = " ".repeat(self.column_number - 1) + "^";
-        if self.column_number < self.next_column_number - 1 {
-            indicator += &"~".repeat(if self.line_number == self.next_line_number {
-                self.next_column_number - self.column_number - 1
-            } else {
-                0
-            });
-        }
-        Error::parse(self.location(), format!("{}:\n{}\n{}", err, self.current_line, indicator))
+        const MAX_ERROR_LINE_LEN: usize = 200;
+        const MIN_CONTEXT_LEN: usize = 10;
+        const ELLIPSIS: &str = "\u{2026}";
+        let error_context = self.get_error_context(MAX_ERROR_LINE_LEN, MIN_CONTEXT_LEN, ELLIPSIS);
+        Error::parse(
+            self.location(),
+            format!("{}:\n{}\n{}", err, error_context.line(), error_context.indicator()),
+        )
     }
 
     fn consume_if_matched<'a>(&mut self, matched: Option<Match<'a>>) -> bool {
@@ -728,11 +763,470 @@ impl<'parser> Parser<'parser> {
             Err(self.error("Mismatched braces in the document"))
         }
     }
+
+    /// Returns the given `current_line` and an `indicator` line: spaces, followed
+    /// by a carat (`^`) that points at the given `column_number`, followed by
+    /// tilde's (`~`) as long as the error token.
+    ///
+    /// If the line is longer than a set maximum length, the line is trimmed and
+    /// the indicator positions are adjusted.
+    fn get_error_context(
+        &self,
+        max_error_line_len: usize,
+        min_context_len: usize,
+        ellipsis: &str,
+    ) -> ParserErrorContext {
+        let indicator_len = if self.line_number == self.next_line_number {
+            std::cmp::max(self.next_column_number - self.column_number, 1)
+        } else {
+            1
+        };
+
+        // `indicator_start` is a 0-based char position
+        let indicator_start = self.column_number - 1;
+
+        let error_line_len = self.current_line.chars().count();
+        if error_line_len <= max_error_line_len {
+            ParserErrorContext::new(self.current_line.to_owned(), indicator_start, indicator_len)
+        } else {
+            trim_error_line_and_indicator(
+                self.current_line,
+                indicator_start,
+                indicator_len,
+                error_line_len,
+                max_error_line_len,
+                min_context_len,
+                ellipsis,
+            )
+        }
+    }
+}
+
+struct CharRange {
+    range: std::ops::Range<usize>,
+}
+
+impl CharRange {
+    fn new(range: std::ops::Range<usize>) -> Self {
+        Self { range }
+    }
+
+    fn to_byte_range(self, from_string: &str) -> Option<std::ops::Range<usize>> {
+        let char_len = from_string.chars().count();
+        let mut some_start_byte =
+            if self.range.start == char_len { Some(from_string.len()) } else { None };
+        let mut some_end_byte =
+            if self.range.end == char_len { Some(from_string.len()) } else { None };
+        if let (Some(start_byte), Some(end_byte)) = (some_start_byte, some_end_byte) {
+            return Some(start_byte..end_byte);
+        }
+        for (char_pos, (byte_pos, _char)) in from_string.char_indices().enumerate() {
+            if char_pos == self.range.start {
+                if let Some(end_byte) = some_end_byte {
+                    return Some(byte_pos..end_byte);
+                }
+                some_start_byte = Some(byte_pos);
+            }
+            if char_pos == self.range.end {
+                if let Some(start_byte) = some_start_byte {
+                    return Some(start_byte..byte_pos);
+                }
+                some_end_byte = Some(byte_pos);
+            }
+        }
+        None
+    }
+}
+
+fn trim_error_line_and_indicator(
+    error_line: &str,
+    indicator_start: usize,
+    mut indicator_len: usize,
+    error_line_len: usize,
+    max_error_line_len: usize,
+    min_context_len: usize,
+    ellipsis: &str,
+) -> ParserErrorContext {
+    let ellipsis_len = ellipsis.chars().count();
+
+    assert!(max_error_line_len > ellipsis_len);
+    assert!(max_error_line_len < error_line_len);
+    assert!(indicator_start <= error_line_len);
+    assert!(indicator_len == 1 || (indicator_start + indicator_len) <= error_line_len);
+
+    indicator_len = std::cmp::min(indicator_len, max_error_line_len);
+
+    let min_right_context_len = std::cmp::max(min_context_len, indicator_len);
+
+    let context_end =
+        std::cmp::min(indicator_start + min_right_context_len, error_line_len - ellipsis_len);
+    if context_end < max_error_line_len - ellipsis_len {
+        let slice_bytes = CharRange::new(0..(max_error_line_len - ellipsis_len))
+            .to_byte_range(error_line)
+            .expect("char indices should map to String bytes");
+        return ParserErrorContext::new(
+            error_line[slice_bytes].to_string() + ellipsis,
+            indicator_start,
+            indicator_len,
+        );
+    }
+
+    let context_start = indicator_start - std::cmp::min(indicator_start, min_context_len);
+    if error_line_len - context_start < max_error_line_len - ellipsis_len {
+        let start_char = error_line_len - (max_error_line_len - ellipsis_len);
+        let slice_bytes = CharRange::new(start_char..error_line_len)
+            .to_byte_range(error_line)
+            .expect("char indices should map to String bytes");
+        return ParserErrorContext::new(
+            ellipsis.to_owned() + &error_line[slice_bytes],
+            (indicator_start + ellipsis_len) - start_char,
+            indicator_len,
+        );
+    }
+
+    let margin_chars =
+        max_error_line_len - std::cmp::min(max_error_line_len, (ellipsis_len * 2) + indicator_len);
+    let right_margin = std::cmp::min(
+        error_line_len - std::cmp::min(error_line_len, indicator_start + indicator_len),
+        margin_chars / 2,
+    );
+    let left_margin = margin_chars - right_margin;
+    let mut start_char = indicator_start - left_margin;
+    let mut end_char =
+        std::cmp::min(indicator_start + indicator_len + right_margin, error_line_len);
+    let mut start_ellipsis = ellipsis;
+    let mut end_ellipsis = ellipsis;
+    if start_char == 0 {
+        start_ellipsis = "";
+        end_char += ellipsis_len;
+    } else if end_char == error_line_len {
+        end_ellipsis = "";
+        start_char -= ellipsis_len;
+    }
+
+    let slice_bytes = CharRange::new(start_char..end_char)
+        .to_byte_range(error_line)
+        .expect("char indices should map to String bytes");
+    ParserErrorContext::new(
+        start_ellipsis.to_owned() + &error_line[slice_bytes] + end_ellipsis,
+        (indicator_start + ellipsis_len) - start_char,
+        indicator_len,
+    )
 }
 
 #[cfg(test)]
 mod tests {
     use {super::*, crate::test_error, proptest::prelude::*};
+
+    fn gen_error_line_test(
+        error_line: &str,
+        pattern: &str,
+        max_error_line_len: usize,
+        min_context_len: usize,
+        ellipsis: &str,
+        expected_errorline: &str,
+        expected_indicator: &str,
+    ) -> Result<(), String> {
+        let some_newline = pattern.find("\n");
+        let pattern_line1 =
+            if let Some(newline) = some_newline { &pattern[0..newline] } else { &pattern };
+        assert!(pattern_line1.len() > 0);
+        let indicator_start = error_line.find(pattern_line1).expect("pattern not found in line");
+        let end = indicator_start + pattern.len();
+        let indicator_len = end - indicator_start;
+        let error_context = if error_line.chars().count() <= max_error_line_len {
+            ParserErrorContext::new(error_line.to_owned(), indicator_start, indicator_len)
+        } else {
+            trim_error_line_and_indicator(
+                error_line,
+                indicator_start,
+                indicator_len,
+                error_line.chars().count(),
+                max_error_line_len,
+                min_context_len,
+                ellipsis,
+            )
+        };
+        let actual_errorline = error_context.line();
+        let actual_indicator = error_context.indicator();
+        let mut errors = String::new();
+        if expected_errorline != actual_errorline {
+            println!(
+                r#"
+expected_errorline: >>>{}<<< (charlen={})
+  actual_errorline: >>>{}<<< (charlen={} of {}, min context len={})"#,
+                expected_errorline,
+                expected_errorline.chars().count(),
+                actual_errorline,
+                actual_errorline.chars().count(),
+                max_error_line_len,
+                min_context_len,
+            );
+            errors.push_str("actual errorline does not match expected");
+        } else if expected_indicator != actual_indicator {
+            println!(
+                r#"
+                       {}"#,
+                actual_errorline,
+            );
+        }
+        if expected_indicator != actual_indicator {
+            if errors.len() > 0 {
+                errors.push_str(" and ");
+            }
+            println!(
+                r#"
+expected_indicator:    {}
+  actual_indicator:    {}"#,
+                expected_indicator, actual_indicator,
+            );
+            errors.push_str("actual indicator does not match expected");
+        } else if expected_errorline != actual_errorline {
+            println!(
+                r#"
+                       {}"#,
+                actual_indicator,
+            );
+        }
+        if errors.len() > 0 {
+            println!("{}", errors);
+            Err(errors)
+        } else {
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn test_error_line1() {
+        gen_error_line_test(
+            "  good token, bad token;",
+            "bad",
+            30,
+            10,
+            " ... ",
+            "  good token, bad token;",
+            "              ^~~",
+        )
+        .expect("actual should match expected");
+    }
+
+    #[test]
+    fn test_error_line2() {
+        gen_error_line_test(
+            "  good token, bad token;",
+            "token;",
+            20,
+            10,
+            " ... ",
+            " ... ken, bad token;",
+            "              ^~~~~~",
+        )
+        .expect("actual should match expected");
+    }
+
+    #[test]
+    fn test_error_line2_short_ellipsis() {
+        gen_error_line_test(
+            "  good token, bad token;",
+            "token;",
+            20,
+            10,
+            "…",
+            "…d token, bad token;",
+            "              ^~~~~~",
+        )
+        .expect("actual should match expected");
+    }
+
+    #[test]
+    fn test_error_line3() {
+        gen_error_line_test(
+            "A good token, bad token;",
+            "bad",
+            20,
+            10,
+            " ... ",
+            " ... en, bad to ... ",
+            "         ^~~",
+        )
+        .expect("actual should match expected");
+    }
+
+    #[test]
+    fn test_error_line3_short_ellipsis() {
+        gen_error_line_test(
+            "A good token, bad token;",
+            "bad",
+            20,
+            10,
+            "…",
+            "…d token, bad token;",
+            "          ^~~",
+        )
+        .expect("actual should match expected");
+    }
+
+    #[test]
+    fn test_error_line3_escaped_unicode_ellipsis() {
+        gen_error_line_test(
+            "A good token, bad token;",
+            "bad",
+            20,
+            10,
+            "\u{2026}",
+            "…d token, bad token;",
+            "          ^~~",
+        )
+        .expect("actual should match expected");
+    }
+
+    #[test]
+    fn test_error_line4() {
+        gen_error_line_test(
+            "A good token, bad token;",
+            "bad",
+            10,
+            10,
+            " ... ",
+            " ... bad ... ",
+            "     ^~~",
+        )
+        .expect("actual should match expected");
+    }
+
+    #[test]
+    fn test_error_line4_short_context() {
+        gen_error_line_test(
+            "A good token, bad token;",
+            "bad",
+            10,
+            5,
+            " ... ",
+            " ... bad ... ",
+            "     ^~~",
+        )
+        .expect("actual should match expected");
+    }
+
+    #[test]
+    fn test_error_line4_long_pattern() {
+        gen_error_line_test(
+            "A good token, bad token;",
+            "bad token",
+            10,
+            10,
+            " ... ",
+            " ... bad token ... ",
+            "     ^~~~~~~~~",
+        )
+        .expect("actual should match expected");
+    }
+
+    #[test]
+    fn test_error_line4_long_pattern_short_context_big_ellipsis() {
+        gen_error_line_test(
+            "A good token, bad token;",
+            "bad token",
+            10,
+            4,
+            " ... ",
+            " ... bad token ... ",
+            "     ^~~~~~~~~",
+        )
+        .expect("actual should match expected");
+    }
+
+    #[test]
+    fn test_error_line4_long_pattern_short_context_short_ellipsis() {
+        gen_error_line_test(
+            "A good token, bad token;",
+            "bad",
+            10,
+            4,
+            "\u{2026}",
+            "…n, bad t…",
+            "    ^~~",
+        )
+        .expect("actual should match expected");
+    }
+
+    #[test]
+    fn test_error_line5() {
+        gen_error_line_test(
+            r#"[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[{ not a_prop: "value" }]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]"#,
+            "a_prop",
+            200,
+            10,
+            " ... ",
+            r#"[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[{ not a_prop: "value" }]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]"#,
+            r#"                                               ^~~~~~"#,
+        ).expect("actual should match expected");
+    }
+
+    #[test]
+    fn test_error_line6() {
+        gen_error_line_test(
+            r#"[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[{ not a_prop: "value" }]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]"#,
+            "a_prop",
+            100,
+            10,
+            " ... ",
+            r#"[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[{ not a_prop: "value" }]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]] ... "#,
+            r#"                                               ^~~~~~"#,
+        ).expect("actual should match expected");
+    }
+
+    #[test]
+    fn test_error_line7() {
+        gen_error_line_test(
+            r#"[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[{ not a_prop: "value" }]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]"#,
+            "a_prop",
+            100,
+            5,
+            " ... ",
+            r#"[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[{ not a_prop: "value" }]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]] ... "#,
+            r#"                                              ^~~~~~"#,
+        ).expect("actual should match expected");
+    }
+
+    #[test]
+    fn test_error_line7_more_braces() {
+        gen_error_line_test(
+            r#"[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[{ not a_prop: "value" }]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]"#,
+            "a_prop",
+            100,
+            10,
+            " ... ",
+            r#"[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[{ not a_prop: "value" }]]]]]]]]]]]]]]]]]]]]]]]]]]]] ... "#,
+            r#"                                                  ^~~~~~"#,
+        ).expect("actual should match expected");
+    }
+
+    #[test]
+    fn test_error_line8() {
+        gen_error_line_test(
+            r#"[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[{ not a_prop: "value" }]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]"#,
+            "a_prop",
+            100,
+            10,
+            " ... ",
+            r#" ... [[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[{ not a_prop: "value" }]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]"#,
+            r#"                                           ^~~~~~"#,
+        ).expect("actual should match expected");
+    }
+
+    #[test]
+    fn test_error_line9() {
+        gen_error_line_test(
+            r#"[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[{ not a_prop: "value" }]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]"#,
+            "a_prop",
+            100,
+            10,
+            " ... ",
+            r#" ... [[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[{ not a_prop: "value" }]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]] ... "#,
+            r#"                                               ^~~~~~"#,
+        ).expect("actual should match expected");
+    }
 
     lazy_static! {
         // With `ProptestConfig::failure_persistence` on by default, tests may generate the
