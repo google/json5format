@@ -776,16 +776,23 @@ impl<'parser> Parser<'parser> {
         min_context_len: usize,
         ellipsis: &str,
     ) -> ParserErrorContext {
-        let indicator_len = if self.line_number == self.next_line_number {
-            std::cmp::max(self.next_column_number - self.column_number, 1)
-        } else {
-            1
-        };
-
         // `indicator_start` is a 0-based char position
         let indicator_start = self.column_number - 1;
 
         let error_line_len = self.current_line.chars().count();
+
+        let indicator_len = if self.line_number == self.next_line_number {
+            std::cmp::max(
+                std::cmp::min(
+                    self.next_column_number - self.column_number,
+                    error_line_len - indicator_start,
+                ),
+                1,
+            )
+        } else {
+            1
+        };
+
         if error_line_len <= max_error_line_len {
             ParserErrorContext::new(self.current_line.to_owned(), indicator_start, indicator_len)
         } else {
@@ -852,7 +859,14 @@ fn trim_error_line_and_indicator(
     assert!(max_error_line_len > ellipsis_len);
     assert!(max_error_line_len < error_line_len);
     assert!(indicator_start <= error_line_len);
-    assert!(indicator_len == 1 || (indicator_start + indicator_len) <= error_line_len);
+    assert!(
+        indicator_len == 1 || (indicator_start + indicator_len) <= error_line_len,
+        "indicator_start={}, indicator_len={}, error_line_len={}\n{}",
+        indicator_start,
+        indicator_len,
+        error_line_len,
+        error_line
+    );
 
     indicator_len = std::cmp::min(indicator_len, max_error_line_len);
 

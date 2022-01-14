@@ -1,6 +1,6 @@
 [package]
 name = "json5format"
-version = "0.2.3"
+version = "0.2.4"
 authors = [
   "Rich Kadel <richkadel@google.com>",
   "David Tamas-Parris <davidatp@google.com>",
