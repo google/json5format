@@ -65,9 +65,18 @@ lazy_static! {
                 (?:(?:
                     NaN|
                     Infinity|
-                    (?:0[xX][0-9a-fA-F]+)|     # hexadecimal notation
-                    (?:[0-9]+[eE][+-]?[0-9]+)| # exponent notation
-                    (?:[0-9]*\.[0-9]+)         # decimal notation
+
+                    # hexadecimal notation
+                    (?:0[xX][0-9a-fA-F]+)|
+
+                    # decimal exponent notation
+                    (?:(?:0|(?:[1-9][0-9]*))?\.[0-9]+[eE][+-]?[0-9]+)|
+
+                    # integer exponent notation with optional trailing decimal point
+                    (?:(?:0|(?:[1-9][0-9]*))\.?[eE][+-]?[0-9]+)|
+
+                    # decimal notation
+                    (?:(?:0|(?:[1-9][0-9]*))?\.[0-9]+)
                 )\b)|
 
                 # Capture integers, with an optional trailing decimal point.
@@ -79,7 +88,7 @@ lazy_static! {
                 # character.)
 
                 (?:
-                    [0-9]+(?:\.|\b)
+                    (?:0|(?:[1-9][0-9]*))(?:\.|\b)
                 )
             ))
         )"#;
@@ -1722,7 +1731,7 @@ expected_indicator:    {}
             non_string_primitive in
                 concat!(
                     r#"(null|true|false)|([-+]?(NaN|Infinity|(0[xX][0-9a-fA-F]+)"#,
-                    r#"|([0-9]+[eE][+-]?[0-9]+)|([0-9]*\.[0-9]+)|([0-9]+\.?)))"#
+                    r#"|((0|([1-9][0-9]*))?\.[0-9]+[eE][+-]?[0-9]+)|((0|([1-9][0-9]*))?\.[0-9]+)|((0|([1-9][0-9]*))\.?)))"#
                 ),
             ends_non_string_primitive in r#"(|([\s,\]\}]\PC*))"#,
         ) {
