@@ -785,10 +785,10 @@ impl<'parser> Parser<'parser> {
         min_context_len: usize,
         ellipsis: &str,
     ) -> ParserErrorContext {
-        // `indicator_start` is a 0-based char position
-        let indicator_start = self.column_number - 1;
-
         let error_line_len = self.current_line.chars().count();
+
+        // `indicator_start` is a 0-based char position
+        let indicator_start = std::cmp::min(self.column_number - 1, error_line_len);
 
         let indicator_len = if self.line_number == self.next_line_number {
             std::cmp::max(
@@ -867,10 +867,16 @@ fn trim_error_line_and_indicator(
 
     assert!(max_error_line_len > ellipsis_len);
     assert!(max_error_line_len < error_line_len);
-    assert!(indicator_start <= error_line_len);
+    assert!(
+        indicator_start <= error_line_len,
+        "Error because indicator_start={} > error_line_len={}\n{}",
+        indicator_start,
+        error_line_len,
+        error_line
+    );
     assert!(
         indicator_len == 1 || (indicator_start + indicator_len) <= error_line_len,
-        "indicator_start={}, indicator_len={}, error_line_len={}\n{}",
+        "Error because indicator_start={}, indicator_len={}, error_line_len={}\n{}",
         indicator_start,
         indicator_len,
         error_line_len,
