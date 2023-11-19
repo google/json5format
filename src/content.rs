@@ -43,7 +43,7 @@ impl ParsedDocument {
     ) -> Result<Self, Error> {
         let mut parser = Parser::new(&filename);
         parser.set_nesting_limit(nesting_limit);
-        let content = parser.parse(&buffer)?;
+        let content = parser.parse(buffer)?;
 
         Ok(Self { owned_buffer: None, filename, content })
     }
@@ -104,28 +104,19 @@ pub enum Comment {
 impl Comment {
     /// Returns `true` if the `Comment` instance is a `Block` variant.
     pub fn is_block(&self) -> bool {
-        match self {
-            Comment::Block { .. } => true,
-            _ => false,
-        }
+        matches!(self, Comment::Block { .. })
     }
 
     /// Returns `true` if the `Comment` instance is a `Line` variant.
     #[allow(dead_code)] // for API consistency and tests even though enum is currently not `pub`
     pub fn is_line(&self) -> bool {
-        match self {
-            Comment::Line(..) => true,
-            _ => false,
-        }
+        matches!(self, Comment::Line(..))
     }
 
     /// Returns `true` if the `Comment` instance is a `Break` variant.
     #[allow(dead_code)] // for API consistency and tests even though enum is currently not `pub`
     pub fn is_break(&self) -> bool {
-        match self {
-            Comment::Break => true,
-            _ => false,
-        }
+        matches!(self, Comment::Break)
     }
 
     pub(crate) fn format<'a>(
@@ -141,7 +132,7 @@ impl Comment {
                     if is_first {
                         formatter.append(&format!("/*{}", line))?;
                     } else if line.len() > 0 {
-                        formatter.append(&format!("{}", line))?;
+                        formatter.append(&line.to_string())?;
                     }
                     if !is_last {
                         if *align {
@@ -279,7 +270,7 @@ impl ContainedComments {
     /// There are one or more line and/or block comments to be applied to the next contained value,
     /// or to the end of the current container.
     fn has_pending_comments(&self) -> bool {
-        self.pending_comments.len() > 0
+        !self.pending_comments.is_empty()
     }
 
     /// When a value is encountered inside the current container, move all pending comments from the
@@ -322,25 +313,49 @@ pub enum Value {
 impl Value {
     /// Returns `true` for an `Array` variant.
     pub fn is_array(&self) -> bool {
-        match self {
-            Value::Array { .. } => true,
-            _ => false,
-        }
+        matches!(self, Value::Array { .. })
     }
 
     /// Returns `true` for an `Object` variant.
     pub fn is_object(&self) -> bool {
-        match self {
-            Value::Object { .. } => true,
-            _ => false,
-        }
+        matches!(self, Value::Object { .. })
     }
 
     /// Returns `true` for a `Primitive` variant.
     pub fn is_primitive(&self) -> bool {
-        match self {
-            Value::Primitive { .. } => true,
-            _ => false,
+        matches!(self, Value::Primitive { .. })
+    }
+
+    /// Instantiates a `Value::Array` with empty data and the provided comments.
+    pub(crate) fn new_primitive(value_string: String, comments: Vec<Comment>) -> Self {
+        Self::Primitive {
+            val: Primitive { value_string },
+            comments: Comments { before_value: comments, end_of_line_comment: None },
+        }
+    }
+
+    /// Instantiates a `Value::Array` with empty data and the provided comments.
+    pub(crate) fn new_array(comments: Vec<Comment>) -> Self {
+        Self::Array {
+            val: Array {
+                items: vec![],
+                is_parsing_value: false,
+                contained_comments: ContainedComments::new(),
+            },
+            comments: Comments { before_value: comments, end_of_line_comment: None },
+        }
+    }
+
+    /// Instantiates a `Value::Object` with empty data and the provided comments.
+    pub(crate) fn new_object(comments: Vec<Comment>) -> Self {
+        Self::Object {
+            val: Object {
+                pending_property_name: None,
+                properties: vec![],
+                is_parsing_property: false,
+                contained_comments: ContainedComments::new(),
+            },
+            comments: Comments { before_value: comments, end_of_line_comment: None },
         }
     }
 
@@ -379,7 +394,7 @@ impl Value {
     /// Returns true if this value has any block, line, or end-of-line comment(s).
     pub fn has_comments(&mut self) -> bool {
         let comments = self.comments();
-        comments.before_value().len() > 0 || comments.end_of_line().is_some()
+        !comments.before_value().is_empty() || comments.end_of_line().is_some()
     }
 }
 
@@ -402,14 +417,6 @@ pub struct Primitive {
 }
 
 impl Primitive {
-    /// Instantiates a `Value::Array` with empty data and the provided comments.
-    pub(crate) fn new(value_string: String, comments: Vec<Comment>) -> Value {
-        Value::Primitive {
-            val: Primitive { value_string },
-            comments: Comments { before_value: comments, end_of_line_comment: None },
-        }
-    }
-
     /// Returns the primitive value, as a formatted string.
     #[inline]
     pub fn as_str(&self) -> &str {
@@ -504,18 +511,6 @@ pub struct Array {
 }
 
 impl Array {
-    /// Instantiates a `Value::Array` with empty data and the provided comments.
-    pub(crate) fn new(comments: Vec<Comment>) -> Value {
-        Value::Array {
-            val: Array {
-                items: vec![],
-                is_parsing_value: false,
-                contained_comments: ContainedComments::new(),
-            },
-            comments: Comments { before_value: comments, end_of_line_comment: None },
-        }
-    }
-
     /// Returns an iterator over the array items. Items must be dereferenced to access
     /// the `Value`. For example:
     ///
@@ -556,8 +551,8 @@ impl Array {
         let mut items = self.items.clone();
         if options.sort_array_items {
             items.sort_by(|left, right| {
-                let left: &Value = &*left.borrow();
-                let right: &Value = &*right.borrow();
+                let left: &Value = &left.borrow();
+                let right: &Value = &right.borrow();
                 if let Value::Primitive { val: left_primitive, .. } = left {
                     if let Value::Primitive { val: right_primitive, .. } = right {
                         let mut ordering = left_primitive
@@ -672,21 +667,21 @@ impl Property {
     /// names comply with the ECMAScript 5.1 `IdentifierName` requirements.
     #[inline]
     pub fn name(&self) -> &str {
-        return &self.name;
+        &self.name
     }
 
     /// Returns a `Ref` to the property's value, which can be accessed by dereference,
     /// for example: `(*some_prop.value()).is_primitive()`.
     #[inline]
     pub fn value(&self) -> Ref<'_, Value> {
-        return self.value.borrow();
+        self.value.borrow()
     }
 
     /// Returns a `RefMut` to the property's value, which can be accessed by dereference,
     /// for example: `(*some_prop.value()).is_primitive()`.
     #[inline]
     pub fn value_mut(&mut self) -> RefMut<'_, Value> {
-        return self.value.borrow_mut();
+        self.value.borrow_mut()
     }
 }
 
@@ -716,19 +711,6 @@ pub struct Object {
 }
 
 impl Object {
-    /// Instantiates a `Value::Object` with empty data and the provided comments.
-    pub(crate) fn new(comments: Vec<Comment>) -> Value {
-        Value::Object {
-            val: Object {
-                pending_property_name: None,
-                properties: vec![],
-                is_parsing_property: false,
-                contained_comments: ContainedComments::new(),
-            },
-            comments: Comments { before_value: comments, end_of_line_comment: None },
-        }
-    }
-
     /// Retrieves an iterator from the `properties` field.
     #[inline]
     pub fn properties(&self) -> impl Iterator<Item = &Property> {
@@ -849,12 +831,11 @@ impl Container for Object {
     }
 
     fn format_content<'a>(&self, formatter: &'a mut Formatter) -> Result<&'a mut Formatter, Error> {
-        let sorted_properties = match formatter.get_current_subpath_options() {
-            Some(options) => Some(self.sort_properties(&*options.borrow())),
-            None => None,
-        };
+        let sorted_properties = formatter
+            .get_current_subpath_options()
+            .map(|options| self.sort_properties(&options.borrow()));
         let properties = match &sorted_properties {
-            Some(sorted_properties) => &sorted_properties,
+            Some(sorted_properties) => sorted_properties,
             None => &self.properties,
         };
 
@@ -863,7 +844,7 @@ impl Container for Object {
             let is_first = index == 0;
             let is_last = index == len - 1;
             formatter.format_property(
-                &property,
+                property,
                 is_first,
                 is_last,
                 self.contained_comments.has_pending_comments(),
