@@ -278,6 +278,7 @@
 //! * All other original spaces are removed.
 
 #![deny(missing_docs)]
+#![allow(clippy::len_zero)]
 
 #[macro_use]
 mod error;
