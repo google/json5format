@@ -29,13 +29,13 @@ pub enum PathOption {
 impl PartialEq for PathOption {
     fn eq(&self, other: &Self) -> bool {
         use PathOption::*;
-        match (self, other) {
-            (&TrailingCommas(..), &TrailingCommas(..)) => true,
-            (&CollapseContainersOfOne(..), &CollapseContainersOfOne(..)) => true,
-            (&SortArrayItems(..), &SortArrayItems(..)) => true,
-            (&PropertyNameOrder(..), &PropertyNameOrder(..)) => true,
-            _ => false,
-        }
+        matches!(
+            (self, other),
+            (&TrailingCommas(..), &TrailingCommas(..))
+                | (&CollapseContainersOfOne(..), &CollapseContainersOfOne(..))
+                | (&SortArrayItems(..), &SortArrayItems(..))
+                | (&PropertyNameOrder(..), &PropertyNameOrder(..))
+        )
     }
 }
 

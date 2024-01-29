@@ -278,6 +278,7 @@
 //! * All other original spaces are removed.
 
 #![deny(missing_docs)]
+#![allow(clippy::len_zero)]
 
 #[macro_use]
 mod error;
@@ -393,9 +394,9 @@ impl Json5Format {
             let mut borrowed; // extend life of temporary
             let subpath_options = if path == "/" {
                 &mut document_root_options
-            } else if path.starts_with("/") {
+            } else if let Some(remaining) = path.strip_prefix('/') {
                 rc = document_root_options.get_or_create_subpath_options(
-                    &path[1..].split('/').collect::<Vec<_>>(),
+                    &remaining.split('/').collect::<Vec<_>>(),
                     &default_options,
                 );
                 borrowed = rc.borrow_mut();

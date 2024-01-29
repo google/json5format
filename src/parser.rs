@@ -97,7 +97,7 @@ lazy_static! {
     /// Property name without quotes.
     static ref UNQUOTED_PROPERTY_NAME_PATTERN: &'static str = r#"[\$\w&&[^\d]][\$\w]*"#;
     static ref UNQUOTED_PROPERTY_NAME_REGEX: Regex =
-        Regex::new(&exact_match(&*UNQUOTED_PROPERTY_NAME_PATTERN)).unwrap();
+        Regex::new(&exact_match(&UNQUOTED_PROPERTY_NAME_PATTERN)).unwrap();
 
     static ref UNQUOTED_PROPERTY_NAME_AND_COLON_PATTERN_STRING: String =
         r#"(?:("#.to_owned() + *UNQUOTED_PROPERTY_NAME_PATTERN + r#")[\s&&[^\n]]*:)"#;
@@ -122,8 +122,7 @@ lazy_static! {
     /// applied.
     static ref NEXT_TOKEN: Regex = Regex::new(
         &from_start(&(r#"(?:"#.to_owned()
-        + &vec![
-            *WHITESPACE_PATTERN,
+        + &[*WHITESPACE_PATTERN,
             *NEWLINE_PATTERN,
             *LINE_COMMENT_SLASHES_PATTERN,
             *OPEN_BLOCK_COMMENT_PATTERN,
@@ -131,8 +130,7 @@ lazy_static! {
             *UNQUOTED_PROPERTY_NAME_AND_COLON_PATTERN,
             *OPEN_QUOTE_PATTERN,
             *BRACE_PATTERN,
-            *COMMA_PATTERN,
-        ].join("|")
+            *COMMA_PATTERN].join("|")
         + r#")"#))
     ).unwrap();
 
@@ -166,7 +164,7 @@ lazy_static! {
 }
 
 fn matches_unquoted_property_name(strval: &str) -> bool {
-    const KEYWORDS: &'static [&'static str] = &["true", "false", "null"];
+    const KEYWORDS: &[&str] = &["true", "false", "null"];
     UNQUOTED_PROPERTY_NAME_REGEX.is_match(strval) && !KEYWORDS.contains(&strval)
 }
 
@@ -191,11 +189,11 @@ impl Capturer {
         captures
     }
 
-    fn overall_match<'a>(&'a self) -> Option<&'a str> {
+    fn overall_match(&self) -> Option<&str> {
         self.overall_match.as_deref()
     }
 
-    fn captured<'a>(&'a self, i: usize) -> Option<&'a str> {
+    fn captured(&self, i: usize) -> Option<&str> {
         if let (Some(overall_match), Some((start, end))) =
             (&self.overall_match, self.locations.get(i))
         {
@@ -310,7 +308,7 @@ impl<'parser> Parser<'parser> {
     }
 
     fn current_scope(&self) -> Rc<RefCell<Value>> {
-        assert!(self.scope_stack.len() > 0);
+        assert!(!self.scope_stack.is_empty());
         self.scope_stack.last().unwrap().clone()
     }
 
@@ -428,14 +426,9 @@ impl<'parser> Parser<'parser> {
                 // meant to be vertically aligned.
                 let indent_count = self.column_number - 3;
                 let indent = " ".repeat(indent_count);
-                if content
-                    .lines()
-                    .enumerate()
-                    .find(|(index, line)| {
-                        *index > 0 && !line.starts_with(&indent) && line.trim() != ""
-                    })
-                    .is_some()
-                {
+                if content.lines().enumerate().any(|(index, line)| {
+                    index > 0 && !line.starts_with(&indent) && line.trim() != ""
+                }) {
                     self.with_container(|container| {
                         container.add_block_comment(Comment::Block {
                             lines: content.lines().map(|line| line.to_owned()).collect(),
@@ -451,7 +444,7 @@ impl<'parser> Parser<'parser> {
                         .map(|(index, line)| {
                             if index == 0 {
                                 line
-                            } else if line.trim().len() == 0 {
+                            } else if line.trim().is_empty() {
                                 ""
                             } else {
                                 &line[indent_count..]
@@ -466,7 +459,7 @@ impl<'parser> Parser<'parser> {
                     })
                 }
             }
-            None => return Err(self.error("Block comment started without closing \"*/\"")),
+            None => Err(self.error("Block comment started without closing \"*/\"")),
         }
     }
 
@@ -504,29 +497,29 @@ impl<'parser> Parser<'parser> {
                 {
                     let captured = self.colon_capturer.capture(self.remaining);
                     if self.consume_if_matched(captured) {
-                        if matches_unquoted_property_name(&unquoted) {
+                        if matches_unquoted_property_name(unquoted) {
                             self.set_pending_property(unquoted)
                         } else {
                             self.set_pending_property(&format!("{}{}{}", quote, &unquoted, quote))
                         }
                     } else {
-                        return Err(self.error("Property name separator (:) missing"));
+                        Err(self.error("Property name separator (:) missing"))
                     }
                 } else {
                     let comments = self.take_pending_comments()?;
-                    self.add_value(Primitive::new(
+                    self.add_value(Value::new_primitive(
                         format!("{}{}{}", quote, &unquoted, quote),
                         comments,
                     ))
                 }
             }
-            None => return Err(self.error("Unclosed string")),
+            None => Err(self.error("Unclosed string")),
         }
     }
 
     fn add_non_string_primitive(&mut self, non_string_primitive: &str) -> Result<(), Error> {
         let comments = self.take_pending_comments()?;
-        self.add_value(Primitive::new(non_string_primitive.to_string(), comments))
+        self.add_value(Value::new_primitive(non_string_primitive.to_string(), comments))
     }
 
     fn on_brace(&mut self, brace: &str) -> Result<(), Error> {
@@ -544,7 +537,7 @@ impl<'parser> Parser<'parser> {
 
     fn open_object(&mut self) -> Result<(), Error> {
         let comments = self.take_pending_comments()?;
-        self.add_value(Object::new(comments))
+        self.add_value(Value::new_object(comments))
     }
 
     fn exit_scope(&mut self) -> Result<(), Error> {
@@ -563,7 +556,7 @@ impl<'parser> Parser<'parser> {
 
     fn open_array(&mut self) -> Result<(), Error> {
         let comments = self.take_pending_comments()?;
-        self.add_value(Array::new(comments))
+        self.add_value(Value::new_array(comments))
     }
 
     fn close_array(&mut self) -> Result<(), Error> {
@@ -590,7 +583,7 @@ impl<'parser> Parser<'parser> {
         )
     }
 
-    fn consume_if_matched<'a>(&mut self, matched: Option<Match<'a>>) -> bool {
+    fn consume_if_matched(&mut self, matched: Option<Match<'_>>) -> bool {
         self.column_number = self.next_column_number;
         if self.line_number < self.next_line_number {
             self.line_number = self.next_line_number;
@@ -649,7 +642,7 @@ impl<'parser> Parser<'parser> {
         starting_column_number: usize,
     ) -> Result<Array, Error> {
         self.remaining = buffer;
-        self.current_line = &self.remaining;
+        self.current_line = self.remaining;
 
         assert!(starting_line_number > 0, "document line numbers are 1-based");
         self.next_line_number = starting_line_number;
@@ -658,7 +651,7 @@ impl<'parser> Parser<'parser> {
         self.next_line = self.current_line;
         self.line_number = self.next_line_number - 1;
         self.column_number = self.next_column_number - 1;
-        self.scope_stack = vec![Rc::new(RefCell::new(Array::new(vec![])))];
+        self.scope_stack = vec![Rc::new(RefCell::new(Value::new_array(vec![])))];
 
         let mut next_token = Capturer::new(&NEXT_TOKEN);
         let mut single_quoted = Capturer::new(&SINGLE_QUOTED);
@@ -676,17 +669,17 @@ impl<'parser> Parser<'parser> {
         let mut pending_blank_line = false;
         let mut pending_new_line_comment_block = false;
 
-        while self.remaining.len() > 0 {
+        while !self.remaining.is_empty() {
             // See comment above regarding "line comment blocks".
             let mut reset_line_comment_break_check = true;
 
             if self.capture(&mut next_token) {
                 // Since this has to be done as an if-else-if-... check the most common
                 // occurrences first.
-                if let Some(_) = next_token.captured(*WHITESPACE) {
+                if next_token.captured(*WHITESPACE).is_some() {
                     reset_line_comment_break_check = false;
                     Ok(()) // ignore all whitespace not in a string or comment
-                } else if let Some(_) = next_token.captured(*NEWLINE) {
+                } else if next_token.captured(*NEWLINE).is_some() {
                     reset_line_comment_break_check = false;
                     if just_captured_line_comment {
                         if pending_blank_line {
@@ -697,21 +690,21 @@ impl<'parser> Parser<'parser> {
                         }
                     }
                     self.on_newline()
-                } else if let Some(_) = next_token.captured(*COMMA) {
+                } else if next_token.captured(*COMMA).is_some() {
                     self.end_value()
                 } else if let Some(brace) = next_token.captured(*BRACE) {
-                    self.on_brace(&brace)
+                    self.on_brace(brace)
                 } else if let Some(non_string_primitive) =
                     next_token.captured(*NON_STRING_PRIMITIVE)
                 {
-                    self.add_non_string_primitive(&non_string_primitive)
+                    self.add_non_string_primitive(non_string_primitive)
                 } else if let Some(quote) = next_token.captured(*OPEN_QUOTE) {
                     let quoted_string = if quote == "'" {
                         self.consume(&mut single_quoted)
                     } else {
                         self.consume(&mut double_quoted)
                     };
-                    self.add_quoted_string(&quote, quoted_string)
+                    self.add_quoted_string(quote, quoted_string)
                 } else if let Some(unquoted_property_name) =
                     next_token.captured(*UNQUOTED_PROPERTY_NAME_AND_COLON)
                 {
@@ -827,7 +820,7 @@ impl CharRange {
         Self { range }
     }
 
-    fn to_byte_range(self, from_string: &str) -> Option<std::ops::Range<usize>> {
+    fn into_byte_range(self, from_string: &str) -> Option<std::ops::Range<usize>> {
         let char_len = from_string.chars().count();
         let mut some_start_byte =
             if self.range.start == char_len { Some(from_string.len()) } else { None };
@@ -891,7 +884,7 @@ fn trim_error_line_and_indicator(
         std::cmp::min(indicator_start + min_right_context_len, error_line_len - ellipsis_len);
     if context_end < max_error_line_len - ellipsis_len {
         let slice_bytes = CharRange::new(0..(max_error_line_len - ellipsis_len))
-            .to_byte_range(error_line)
+            .into_byte_range(error_line)
             .expect("char indices should map to String bytes");
         return ParserErrorContext::new(
             error_line[slice_bytes].to_string() + ellipsis,
@@ -904,7 +897,7 @@ fn trim_error_line_and_indicator(
     if error_line_len - context_start < max_error_line_len - ellipsis_len {
         let start_char = error_line_len - (max_error_line_len - ellipsis_len);
         let slice_bytes = CharRange::new(start_char..error_line_len)
-            .to_byte_range(error_line)
+            .into_byte_range(error_line)
             .expect("char indices should map to String bytes");
         return ParserErrorContext::new(
             ellipsis.to_owned() + &error_line[slice_bytes],
@@ -934,7 +927,7 @@ fn trim_error_line_and_indicator(
     }
 
     let slice_bytes = CharRange::new(start_char..end_char)
-        .to_byte_range(error_line)
+        .into_byte_range(error_line)
         .expect("char indices should map to String bytes");
     ParserErrorContext::new(
         start_ellipsis.to_owned() + &error_line[slice_bytes] + end_ellipsis,
@@ -956,9 +949,9 @@ mod tests {
         expected_errorline: &str,
         expected_indicator: &str,
     ) -> Result<(), String> {
-        let some_newline = pattern.find("\n");
+        let some_newline = pattern.find('\n');
         let pattern_line1 =
-            if let Some(newline) = some_newline { &pattern[0..newline] } else { &pattern };
+            if let Some(newline) = some_newline { &pattern[0..newline] } else { pattern };
         assert!(pattern_line1.len() > 0);
         let indicator_start = error_line.find(pattern_line1).expect("pattern not found in line");
         let end = indicator_start + pattern.len();
@@ -1000,7 +993,7 @@ expected_errorline: >>>{}<<< (charlen={})
             );
         }
         if expected_indicator != actual_indicator {
-            if errors.len() > 0 {
+            if !errors.is_empty() {
                 errors.push_str(" and ");
             }
             println!(
@@ -1017,7 +1010,7 @@ expected_indicator:    {}
                 actual_indicator,
             );
         }
-        if errors.len() > 0 {
+        if !errors.is_empty() {
             println!("{}", errors);
             Err(errors)
         } else {
@@ -1278,6 +1271,7 @@ expected_indicator:    {}
         };
     }
 
+    #[derive(Default)]
     struct RegexTest<'a> {
         error: Option<&'a str>,
         prefix: &'a str,
@@ -1288,22 +1282,6 @@ expected_indicator:    {}
         next_matches: &'a str,
         next_suffix: &'a str,
         trailing: &'a str,
-    }
-
-    impl<'a> Default for RegexTest<'a> {
-        fn default() -> Self {
-            RegexTest {
-                error: None,
-                prefix: "",
-                matches: "",
-                suffix: "",
-                next_regex: None,
-                next_prefix: "",
-                next_matches: "",
-                next_suffix: "",
-                trailing: "",
-            }
-        }
     }
 
     /// Validate a regex capture, and optional follow-up capture.
@@ -1351,10 +1329,8 @@ expected_indicator:    {}
 
         let mut capture_ids = vec![];
         for (index, subcapture) in capture.iter().enumerate() {
-            if index != OVERALL_MATCH {
-                if subcapture.is_some() {
-                    capture_ids.push(index);
-                }
+            if index != OVERALL_MATCH && subcapture.is_some() {
+                capture_ids.push(index);
             }
         }
         println!("capture ids = {:?}", capture_ids);
@@ -1370,7 +1346,7 @@ expected_indicator:    {}
 
         match test.next_regex {
             Some(next_regex) => test_capture(
-                &*next_regex,
+                next_regex,
                 None,
                 RegexTest {
                     prefix: test.next_prefix,
@@ -1389,7 +1365,7 @@ expected_indicator:    {}
         group_id: Option<usize>,
         test: RegexTest<'_>,
     ) -> Result<String, Error> {
-        let expected_error_str = test.error.clone();
+        let expected_error_str = test.error;
         match try_capture(regex, group_id, test) {
             Ok(captured) => {
                 println!("SUCCESSFUL CAPTURE! ... '{}'", captured);
@@ -1792,7 +1768,7 @@ expected_indicator:    {}
             any_chars in r#"\PC*"#,
         ) {
             test_capture(
-                &*COLON,
+                &COLON,
                 None,
                 RegexTest { matches: &colon, trailing: &any_chars, ..Default::default() },
             )
@@ -2224,12 +2200,12 @@ expected_indicator:    {}
         test_regex(*COMMA, RegexTest { matches: ",", trailing: "{1234},", ..Default::default() })
             .unwrap();
 
-        test_capture(&*COLON, None, RegexTest { matches: ":", ..Default::default() }).unwrap();
+        test_capture(&COLON, None, RegexTest { matches: ":", ..Default::default() }).unwrap();
 
-        test_capture(&*COLON, None, RegexTest { matches: "  \t :", ..Default::default() }).unwrap();
+        test_capture(&COLON, None, RegexTest { matches: "  \t :", ..Default::default() }).unwrap();
 
         test_capture(
-            &*COLON,
+            &COLON,
             None,
             RegexTest { error: Some("capture failed"), matches: " \n :", ..Default::default() },
         )
@@ -2245,13 +2221,13 @@ expected_indicator:    {}
             Comment::Block { lines: vec!["a block".into(), "comment".into()], align: true };
         assert!(block_comment.is_block());
 
-        let primitive_value = Primitive::new("l33t".to_owned(), vec![]);
+        let primitive_value = Value::new_primitive("l33t".to_owned(), vec![]);
         assert!(primitive_value.is_primitive());
 
-        let array_value = Array::new(vec![]);
+        let array_value = Value::new_array(vec![]);
         assert!(array_value.is_array());
 
-        let object_value = Object::new(vec![]);
+        let object_value = Value::new_object(vec![]);
         assert!(object_value.is_object());
     }
 
@@ -2262,14 +2238,13 @@ expected_indicator:    {}
         let good_buffer = r##"{
     list_of_lists_of_lists: [[[]]]
 }"##;
-        parser.parse_from_location(&good_buffer, 8, 15).expect("should NOT exceed nesting limit");
+        parser.parse_from_location(good_buffer, 8, 15).expect("should NOT exceed nesting limit");
 
         let bad_buffer = r##"{
     list_of_lists_of_lists: [[[[]]]]
 }"##;
-        let err = parser
-            .parse_from_location(&bad_buffer, 8, 15)
-            .expect_err("should exceed nesting limit");
+        let err =
+            parser.parse_from_location(bad_buffer, 8, 15).expect_err("should exceed nesting limit");
         match err {
             Error::Parse(_, message) => {
                 assert_eq!(
@@ -2302,7 +2277,7 @@ json5_value = {
 End of mixed content document.
 "##;
         let json5_slice =
-            &mixed_document[mixed_document.find("{").unwrap()..mixed_document.find("}").unwrap()];
+            &mixed_document[mixed_document.find('{').unwrap()..mixed_document.find('}').unwrap()];
         let mut parser = Parser::new(&filename);
         let err = parser
             .parse_from_location(json5_slice, 8, 15)
@@ -2327,7 +2302,7 @@ End of mixed content document.
     fn test_doc_with_nulls() {
         let mut parser = Parser::new(&None);
         let buffer = "[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[////[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]\u{000}\u{000}\u{000}\u{000}\u{000}\u{000}\u{000}\u{000}\u{000}\u{000}\u{000}\u{000}\u{000}\u{000}]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]";
-        let err = parser.parse(&buffer).expect_err("should fail");
+        let err = parser.parse(buffer).expect_err("should fail");
         match err {
             Error::Parse(_, message) => {
                 assert!(message.starts_with("Mismatched braces in the document:"));

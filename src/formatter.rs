@@ -85,7 +85,7 @@ impl SubpathOptions {
                 new_options
             }
         };
-        if remaining_path.len() == 0 {
+        if remaining_path.is_empty() {
             subpath_options
         } else {
             (*subpath_options.borrow_mut())
@@ -102,7 +102,7 @@ impl SubpathOptions {
             self.subpath_options_by_name.get(name_or_star)
         };
         if let Some(subpath_options) = subpath_options_ref {
-            if remaining_path.len() == 0 {
+            if remaining_path.is_empty() {
                 Some(subpath_options.clone())
             } else {
                 (*subpath_options.borrow()).get_subpath_options(remaining_path)
@@ -213,13 +213,13 @@ impl Formatter {
 
     /// Appends the given string, indenting if required.
     pub fn append(&mut self, content: &str) -> Result<&mut Formatter, Error> {
-        if self.pending_indent && !content.starts_with("\n") {
+        if self.pending_indent && !content.starts_with('\n') {
             let spaces = self.depth * self.default_options.indent_by;
             self.bytes.extend_from_slice(" ".repeat(spaces).as_bytes());
             self.column = spaces + 1;
             self.pending_indent = false;
         }
-        if content.ends_with("\n") {
+        if content.ends_with('\n') {
             self.column = 1;
             self.bytes.extend_from_slice(content.as_bytes());
         } else {
@@ -244,7 +244,7 @@ impl Formatter {
     /// Outputs a newline (unless this is the first line), and sets the `pending_indent` flag to
     /// indicate the next non-blank line should be indented.
     pub fn start_next_line(&mut self) -> Result<&mut Formatter, Error> {
-        if self.bytes.len() > 0 {
+        if !self.bytes.is_empty() {
             self.append_newline()?;
         }
         self.pending_indent = true;
@@ -276,7 +276,7 @@ impl Formatter {
 
     fn format_comments_internal(
         &mut self,
-        comments: &Vec<Comment>,
+        comments: &[Comment],
         leading_blank_line: bool,
     ) -> Result<&mut Formatter, Error> {
         let mut previous: Option<&Comment> = None;
@@ -304,7 +304,7 @@ impl Formatter {
 
     pub fn format_comments(
         &mut self,
-        comments: &Vec<Comment>,
+        comments: &[Comment],
         is_first: bool,
     ) -> Result<&mut Formatter, Error> {
         self.format_comments_internal(comments, !is_first)
@@ -312,7 +312,7 @@ impl Formatter {
 
     pub fn format_trailing_comments(
         &mut self,
-        comments: &Vec<Comment>,
+        comments: &[Comment],
     ) -> Result<&mut Formatter, Error> {
         self.format_comments_internal(comments, true)
     }
@@ -377,7 +377,7 @@ impl Formatter {
             if is_first {
                 self.start_next_line()?;
             }
-            self.format_comments(&value.comments().before_value(), is_first)?;
+            self.format_comments(value.comments().before_value(), is_first)?;
         }
         if let Some(name) = name {
             self.append(&format!("{}: ", name))?;
@@ -406,7 +406,7 @@ impl Formatter {
     ) -> Result<&mut Formatter, Error> {
         self.format_scoped_value(
             None,
-            &mut *item.borrow_mut(),
+            &mut item.borrow_mut(),
             is_first,
             is_last,
             container_has_pending_comments,
@@ -422,7 +422,7 @@ impl Formatter {
     ) -> Result<&mut Formatter, Error> {
         self.format_scoped_value(
             Some(&property.name),
-            &mut *property.value.borrow_mut(),
+            &mut property.value.borrow_mut(),
             is_first,
             is_last,
             container_has_pending_comments,
@@ -431,7 +431,7 @@ impl Formatter {
 
     pub fn options_in_scope(&self) -> FormatOptions {
         match self.get_current_subpath_options() {
-            Some(subpath_options) => (*subpath_options.borrow()).options.clone(),
+            Some(subpath_options) => subpath_options.borrow().options.clone(),
             None => self.default_options.clone(),
         }
     }

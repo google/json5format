@@ -14,17 +14,12 @@ use {
     std::path::PathBuf,
 };
 
+#[derive(Default)]
 struct FormatTest<'a> {
     options: Option<FormatOptions>,
     input: &'a str,
     error: Option<&'a str>,
     expected: &'a str,
-}
-
-impl<'a> Default for FormatTest<'a> {
-    fn default() -> Self {
-        FormatTest { options: None, input: "", error: None, expected: "" }
-    }
 }
 
 fn try_test_format(test: FormatTest<'_>) -> Result<(), Error> {
@@ -1101,9 +1096,9 @@ See [fuchsia.dev](https://fuchsia.dev).
 fn test_options() {
     let options = FormatOptions { ..Default::default() };
     assert_eq!(options.indent_by, 4);
-    assert_eq!(options.trailing_commas, true);
-    assert_eq!(options.collapse_containers_of_one, false);
-    assert_eq!(options.sort_array_items, false);
+    assert!(options.trailing_commas);
+    assert!(!options.collapse_containers_of_one);
+    assert!(!options.sort_array_items);
 
     let options = FormatOptions {
         indent_by: 2,
@@ -1155,13 +1150,12 @@ fn test_options() {
                 PathOption::SortArrayItems(true),
             },
         },
-        ..Default::default()
     };
 
     assert_eq!(options.indent_by, 2);
-    assert_eq!(options.trailing_commas, false);
-    assert_eq!(options.collapse_containers_of_one, true);
-    assert_eq!(options.sort_array_items, true);
+    assert!(!options.trailing_commas);
+    assert!(options.collapse_containers_of_one);
+    assert!(options.sort_array_items);
 
     let path_options = options
         .options_by_path
@@ -1171,7 +1165,7 @@ fn test_options() {
         .get(&PathOption::TrailingCommas(true))
         .expect("Expected to find a PathOption::TrailingCommas setting")
     {
-        PathOption::TrailingCommas(trailing_commas) => assert_eq!(*trailing_commas, false),
+        PathOption::TrailingCommas(trailing_commas) => assert!(!(*trailing_commas)),
         _ => panic!("PathOption enum as key should return a value of the same type"),
     };
     match path_options
@@ -1179,7 +1173,7 @@ fn test_options() {
         .expect("Expected to find a PathOption::CollapseContainersOfOne setting")
     {
         PathOption::CollapseContainersOfOne(collapsed_container_of_one) => {
-            assert_eq!(*collapsed_container_of_one, false)
+            assert!(!(*collapsed_container_of_one))
         }
         _ => panic!("PathOption enum as key should return a value of the same type"),
     };
@@ -1187,7 +1181,7 @@ fn test_options() {
         .get(&PathOption::SortArrayItems(true))
         .expect("Expected to find a PathOption::SortArrayItems setting")
     {
-        PathOption::SortArrayItems(sort_array_items) => assert_eq!(*sort_array_items, true),
+        PathOption::SortArrayItems(sort_array_items) => assert!(*sort_array_items),
         _ => panic!("PathOption enum as key should return a value of the same type"),
     };
     match path_options
@@ -1238,7 +1232,7 @@ fn test_duplicated_key_in_subpath_options_is_ignored() {
             match path_options.get(&PathOption::TrailingCommas(true)) {
                 Some(path_option) => match path_option {
                     PathOption::TrailingCommas(trailing_commas) => {
-                        assert_eq!(*trailing_commas, false);
+                        assert!(!(*trailing_commas));
                     }
                     _ => panic!("PathOption enum as key should return a value of the same type"),
                 },
@@ -1247,7 +1241,7 @@ fn test_duplicated_key_in_subpath_options_is_ignored() {
             match path_options.get(&PathOption::CollapseContainersOfOne(true)) {
                 Some(path_option) => match path_option {
                     PathOption::CollapseContainersOfOne(collapsed_container_of_one) => {
-                        assert_eq!(*collapsed_container_of_one, false);
+                        assert!(!(*collapsed_container_of_one));
                     }
                     _ => panic!("PathOption enum as key should return a value of the same type"),
                 },
@@ -1256,7 +1250,7 @@ fn test_duplicated_key_in_subpath_options_is_ignored() {
             match path_options.get(&PathOption::SortArrayItems(true)) {
                 Some(path_option) => match path_option {
                     PathOption::SortArrayItems(sort_array_items) => {
-                        assert_eq!(*sort_array_items, true);
+                        assert!(*sort_array_items);
                     }
                     _ => panic!("PathOption enum as key should return a value of the same type"),
                 },
@@ -1880,7 +1874,7 @@ fn test_parsing_samples_does_not_crash() -> Result<(), std::io::Error> {
         let filename = entry.path().into_os_string().to_string_lossy().to_string();
         let mut buffer = String::new();
         println!("{}. Parsing: {} ...", count, filename);
-        if let Err(err) = fs::File::open(&entry.path())?.read_to_string(&mut buffer) {
+        if let Err(err) = fs::File::open(entry.path())?.read_to_string(&mut buffer) {
             println!("Ignoring failure to read the file into a string: {:?}", err);
             return Ok(());
         }
