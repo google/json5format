@@ -56,8 +56,17 @@ fn parse_documents(files: Vec<PathBuf>) -> Result<Vec<ParsedDocument>, anyhow::E
     Ok(parsed_documents)
 }
 
+/// Returns whether the formatted bytes should be written to filename. Standard input ("-")
+/// is always written (to standard output); a real file is only written when its current contents
+/// differ from bytes. This keeps --replace idempotent: already-formatted files are left
+/// untouched, preserving their modification time, which matters for change-detecting callers such
+/// as treefmt.
+fn needs_write(filename: &str, bytes: &[u8]) -> bool {
+    filename == "-" || fs::read(filename).map(|current| current != bytes).unwrap_or(true)
+}
+
 /// Formats the given parsed documents, applying the given format `options`. If `replace` is true,
-/// each input file is overwritten by its formatted version.
+/// each input file whose contents differ from its formatted version is overwritten.
 fn format_documents(
     parsed_documents: Vec<ParsedDocument>,
     options: FormatOptions,
@@ -68,7 +77,9 @@ fn format_documents(
         let filename = parsed_document.filename().as_ref().unwrap();
         let bytes = format.to_utf8(parsed_document)?;
         if replace {
-            Opt::write_to_file(filename, &bytes)?;
+            if needs_write(filename, &bytes) {
+                Opt::write_to_file(filename, &bytes)?;
+            }
         } else {
             if index > 0 {
                 println!();
@@ -351,5 +362,28 @@ mod tests {
 
         let filename = args.files[0].clone().into_os_string().to_string_lossy().to_string();
         assert_eq!(filename, some_filename);
+    }
+
+    #[test]
+    fn test_needs_write() {
+        let path = std::env::temp_dir()
+            .join(format!("formatjson5_needs_write_{}.json5", std::process::id()));
+        let filename = path.to_str().unwrap();
+
+        // A missing file must be written.
+        let _ = fs::remove_file(&path);
+        assert!(needs_write(filename, b"formatted"));
+
+        // Identical contents must not be rewritten.
+        fs::write(&path, b"formatted").unwrap();
+        assert!(!needs_write(filename, b"formatted"));
+
+        // Differing contents must be rewritten.
+        assert!(needs_write(filename, b"changed"));
+
+        // Standard input is always written.
+        assert!(needs_write("-", b"formatted"));
+
+        let _ = fs::remove_file(&path);
     }
 }
