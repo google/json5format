@@ -425,10 +425,18 @@ impl<'parser> Parser<'parser> {
                 // the block comment, and 2 spaces on subsequent lines, assuming the line content is
                 // meant to be vertically aligned.
                 let indent_count = self.column_number - 3;
-                let indent = " ".repeat(indent_count);
-                if content.lines().enumerate().any(|(index, line)| {
-                    index > 0 && !line.starts_with(&indent) && line.trim() != ""
-                }) {
+                // Check the prefix in place instead of allocating an indent-sized String for every
+                // block comment. Repeated comments at large columns can otherwise become quadratic.
+                let has_indent = |line: &str| {
+                    line.as_bytes()
+                        .get(..indent_count)
+                        .map_or(false, |prefix| prefix.iter().all(|&byte| byte == b' '))
+                };
+                if content
+                    .lines()
+                    .enumerate()
+                    .any(|(index, line)| index > 0 && !has_indent(line) && line.trim() != "")
+                {
                     self.with_container(|container| {
                         container.add_block_comment(Comment::Block {
                             lines: content.lines().map(|line| line.to_owned()).collect(),
